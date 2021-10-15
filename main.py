@@ -42,14 +42,18 @@ for excel_file_location in excel_files_locations:
                     # 66 is the ASCII value of B and afterwards all the values are sequencial
                     row_index = ord(row[1]) - 66
                     # Collect all values from the rows to the appropriate 
-                    for i in range(2, 11):
+                    for i in range(3, 12):
                         # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index
-                        # to ve put into ODs
+                        # to be used when saving to ODs
+                        # This offset comes from the fact that in this expiremnt we don't right-most columb
                         j = i - 2
-                        if (row_index, j) not in parsed_data[-1]['ODs']:
-                            # Subtract 2 from i to bring it to zero indexed count
-                            parsed_data[-1]['ODs'][(row_index, j)] = [row[i]]
+                        curr_cell = (row_index, j)
+                        if curr_cell not in parsed_data[-1]['ODs']:
+                            parsed_data[-1]['ODs'][curr_cell] = [row[i]]
+                        # There is a previous reading for this cell, therefore normalize it against the first read than save it
                         else:
-                            parsed_data[-1]['ODs'][(row_index, j)].append(row[i])
+                            parsed_data[-1]['ODs'][curr_cell].append(row[i] - parsed_data[-1]['ODs'][curr_cell][0])
+
+print(parsed_data)
 
 # Creating graphs
