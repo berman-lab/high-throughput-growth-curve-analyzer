@@ -52,7 +52,4 @@ for excel_file_location in excel_files_locations:
                         else:
                             parsed_data[-1]['ODs'][(row_index, j)].append(row[i])
 
-
-# Data proccecins
-
 # Creating graphs
