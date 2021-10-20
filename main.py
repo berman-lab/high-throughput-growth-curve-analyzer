@@ -1,7 +1,3 @@
-# if main
-if __name__ == "__main__":
-    main()
-
 def main():
     import numpy as np
     import pandas as pd
@@ -34,7 +30,6 @@ def main():
                 # run tourgh all the rows and columbs and save the data into object for graphing later
                 # We use 96 well plates but only use the inner wells. That is, we treat the 96 well as a 60 well (6 X 10)
                 for _, row in enumerate(df.itertuples(), 1):
-
                     # save the time of reading from the start of the experiment in seconds
                     if row[1] == "Time [s]":
                         parsed_data[-1]['times'].append(row[2])
@@ -46,12 +41,13 @@ def main():
                         # Cnvert the character index to numaric index to be used to insert under the desired key in ODs
                         # 66 is the ASCII value of B and afterwards all the values are sequencial
                         row_index = ord(row[1]) - 66
-                        # Collect all values from the rows to the appropriate 
-                        for i in range(3, 12):
-                            # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index
-                            # to be used when saving to ODs
-                            # This offset comes from the fact that in this expiremnt we don't right-most columb
-                            j = i - 2
+
+                        # This offset comes from the fact that in this expiremnt we don't right-most columb and the index given by itertuples
+                        left_offset = 3
+                        # Collect all values from the columbs to ODs
+                        for i in range(left_offset, 12):
+                            # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
+                            j = i - left_offset
                             curr_cell = (row_index, j)
                             if curr_cell not in parsed_data[-1]['ODs']:
                                 parsed_data[-1]['ODs'][curr_cell] = [row[i]]
@@ -62,3 +58,8 @@ def main():
     print(parsed_data)
 
     # Creating graphs
+
+
+
+if __name__ == "__main__":
+    main()
