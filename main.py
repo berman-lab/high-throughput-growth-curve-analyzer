@@ -4,11 +4,13 @@ import matplotlib.pyplot as plt
 
 def main():
 
+    base_location = "C:/Data/bio-graphs"
+
     # TODO Add retrival of all xslx files under the 'in' dirctory
-    excel_files_locations =  [ "C:/Data/bio-graphs/In/AM Test OD600 and GFP (Modified)_20210912_110258.xlsx" ]
+    excel_files_locations =  [ base_location + "/In/AM Test OD600 and GFP (Modified)_20210912_110258.xlsx" ]
 
     # The directory into which all the graphs will be saved
-    output_directory = "C:/Data/bio-graphs/Out"
+    output_directory = base_location + "/Out"
 
     parsed_data = read_data(excel_files_locations)  
 
@@ -29,8 +31,8 @@ def read_data(excel_files_locations):
         with pd.ExcelFile(excel_file_location) as excel_file:
             # Loop all the sheets in the file
             for sheet in excel_file.sheet_names:
-                # Get the name of the current file
-                curr_file_name = excel_file_location.split('/')[-1]
+                # Get the name of the current file. The last part of the path then remove the file extension
+                curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
                 # Create a new object to save data into
                 # TODO change to dataclass?
                 parsed_data.append({ 'ODs': {}, 'times': [], 'temps': [], 'plate_name' : sheet, 'file_name': curr_file_name })
@@ -72,17 +74,16 @@ def create_graphs(data, output_path):
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate
-        aaa = experiment_data['ODs']
         for row_index, columb_index in experiment_data['ODs']:
-            print((row_index, columb_index))
+            fig, ax = plt.subplots()
+            ax.plot(experiment_data['times'], experiment_data['ODs'][(row_index, columb_index)])
+            ax.set_xlabel('Time[s]')
+            ax.set_ylabel('OD600')
+            ax.set_title("ODs")
+            plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(columb_index + 3) + " from " + experiment_data["file_name"] + " " + experiment_data["plate_name"])
+            plt.close()
 
-    # TODO put graph creatin into loop
-    fig, ax = plt.subplots()
-    ax.plot(data[0]['times'], data[0]['ODs'][(0, 0)])
-    ax.set_xlabel('Time[s]')
-    ax.set_ylabel('OD600')
-    ax.set_title("ODs")
-    plt.savefig(output_path + "/cell 0,0 from AM Test OD600 and GFP (Modified)_20210912_110258.png")
+
 
 if __name__ == "__main__":
     main()
