@@ -1,32 +1,39 @@
+import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
 def main():
 
-    base_location = "C:/Data/bio-graphs"
-
-    # TODO Add retrival of all xslx files under the 'in' dirctory
-    excel_files_locations =  [ base_location + "/In/AM Test OD600 and GFP (Modified)_20210912_110258.xlsx" ]
-
+    base_path = "C:/Data/bio-graphs"
+    # Input directory
+    input_directory = base_path + "/In"
     # The directory into which all the graphs will be saved
-    output_directory = base_location + "/Out"
+    output_directory = base_path + "/Out"
+    
+    # Tuple with the all the extensions all the data files
+    extensions = (".xlsx")
+    
+    # Get the data from the files
+    parsed_data = read_data(input_directory, extensions)  
 
-    parsed_data = read_data(excel_files_locations)  
-
+    # Graph the data and save the figures to the output_directory
     create_graphs(parsed_data, output_directory)    
 
 
-def read_data(excel_files_locations):
-
+def read_data(input_directory, extensions):
+    '''Read all the data from the files with the given extension in the input directory given'''
     # The index the data we want to analyze starts at
     cutoff_index = 78
 
     # The container of the data after parsing but pre proccecing
     parsed_data = []
 
+    # retrive all the data files by extesions from the In directory
+    excel_files_paths = get_files_from_directory(input_directory, extensions)
+
     # Loop excel_files_locations list to read all the relevant files
-    for excel_file_location in excel_files_locations:
+    for excel_file_location in excel_files_paths:
         # Take the excel_file_location and use it to initiate an ExcelFile object as the context
         with pd.ExcelFile(excel_file_location) as excel_file:
             # Loop all the sheets in the file
@@ -75,6 +82,10 @@ def create_graphs(data, output_path):
     for experiment_data in data:
         # Loop all ODs within each plate
         for row_index, columb_index in experiment_data['ODs']:
+            # Set the first value to 0 since it was used to normalize against
+            experiment_data['ODs'][(row_index, columb_index)][0] = 0
+
+            # Create the graph and save it
             fig, ax = plt.subplots()
             ax.plot(experiment_data['times'], experiment_data['ODs'][(row_index, columb_index)])
             ax.set_xlabel('Time[s]')
@@ -83,7 +94,9 @@ def create_graphs(data, output_path):
             plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(columb_index + 3) + " from " + experiment_data["file_name"] + " " + experiment_data["plate_name"])
             plt.close()
 
-
+def get_files_from_directory(path , extension):
+    '''Get the full path to each file with the extension specified from the path'''
+    return [ path + "/" + file_name for file_name in list(filter(lambda file: file.endswith(extension) , os.listdir(path))) ]
 
 if __name__ == "__main__":
     main()
