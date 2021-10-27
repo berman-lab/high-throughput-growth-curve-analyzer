@@ -53,7 +53,7 @@ def read_data(input_directory, extensions):
                 for _, row in enumerate(df.itertuples(), 1):
                     # save the time of reading from the start of the experiment in seconds
                     if row[1] == "Time [s]":
-                        parsed_data[-1].times.append(row[2])
+                        parsed_data[-1].times.append(row[2] / 3600)
                     # save the tempreture at the time of reading
                     elif row[1] == "Temp. [°C]":
                         parsed_data[-1].temps.append(row[2])
@@ -89,7 +89,7 @@ def create_graphs(data, output_path):
             # Create the graph and save it
             fig, ax = plt.subplots()
             ax.plot(experiment_data.times, experiment_data.ODs[(row_index, columb_index)])
-            ax.set_xlabel('Time[s]')
+            ax.set_xlabel('Time [hours]')
             ax.set_ylabel('OD600')
             ax.set_title("ODs")
             plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(columb_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
