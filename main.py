@@ -1,4 +1,5 @@
 import os
+import curveball as cb
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,14 +17,32 @@ def main():
     extensions = (".xlsx")
     
     # Get the data from the files
-    parsed_data = read_data(input_directory, extensions)  
+    parsed_data = read_data(input_directory, extensions)
+
+    tidy_ds = create_tidy_dataset(parsed_data)
 
     # Graph the data and save the figures to the output_directory
-    create_graphs(parsed_data, output_directory)    
+    create_graphs(parsed_data, output_directory)
 
 
 def read_data(input_directory, extensions):
-    '''Read all the data from the files with the given extension in the input directory given'''
+    '''Read all the data from the files with the given extension in the input directory given
+    
+     Parameters
+    ----------
+    input_directory : str
+        The path to the folder where all the data we want to analyze is stored
+    extensions : (str, str, ...)
+        tuple with all the files with a given file extension we wish to include in the analysis
+
+    Returns
+    -------
+    ExperimentData object
+
+    Examples
+    --------   
+    >>> read_data("Root/Folder/where_we_want_to_read_data_from", ("xslx", "csv"))
+    '''
     # The index the data we want to analyze starts at
     cutoff_index = 78
 
@@ -79,6 +98,22 @@ def read_data(input_directory, extensions):
     return parsed_data
 
 def create_graphs(data, output_path):
+    '''Create graphs from the data collected in previous steps
+    Parameters
+    ----------
+    data : ExperimentData object
+        All the data from the expriment
+    output_path : str
+        path to the file into which the graphes will be saved to
+
+    Returns
+    -------
+    null
+
+    Examples
+    --------   
+    >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
+    '''
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate
@@ -98,6 +133,31 @@ def create_graphs(data, output_path):
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
     return [ path + "/" + file_name for file_name in list(filter(lambda file: file.endswith(extension) , os.listdir(path))) ]
+
+def create_tidy_dataset(data):
+    '''Creates a tidy complient pandas dataset.
+
+    Parameters
+    ----------
+    data : ExperimentData object
+        All the data from the expriment
+
+    Returns
+    -------
+    pandas.DataFrame
+
+    Examples
+    --------   
+    >>> tidy_ds = create_tidy_dataset(parsed_data)
+    '''
+
+    for experiment_data in data:
+         for row_index, columb_index in experiment_data.ODs:
+            for well_ODs in experiment_data.ODs[(row_index, columb_index)]:
+                aaa = well_ODs
+
+
+    return 'a'
 
 if __name__ == "__main__":
     main()
