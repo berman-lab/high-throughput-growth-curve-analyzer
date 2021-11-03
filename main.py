@@ -1,8 +1,9 @@
 import os
-import curveball as cb
+import curveball
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.stats.stats import mode
 from experiment_data import ExperimentData 
 
 def main():
@@ -19,7 +20,21 @@ def main():
     # Get the data from the files
     parsed_data = read_data(input_directory, extensions)
 
-    tidy_ds = create_tidy_dataset(parsed_data)
+    # Generate data for analysis by curveball
+    tidy_df_list = create_tidy_dataframe_list(parsed_data)
+
+
+    # Curveball - not yet working but getting there
+    # ex_data = tidy_df_list[0][(0,0)]
+    # model = curveball.models.fit_model(ex_data, PLOT = False)
+    # params = curveball.models.bootstrap_params(ex_data, model, 1)
+
+    # has_nu = curveball.models.has_nu(model)
+    # has_lag_phase = curveball.models.has_lag(model)
+    # time_of_lag = curveball.models.find_lag(model, params=params)
+    # max_slope = curveball.models.find_max_growth(model)
+
+    # print(model)
 
     # Graph the data and save the figures to the output_directory
     create_graphs(parsed_data, output_directory)
@@ -134,8 +149,8 @@ def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
     return [ path + "/" + file_name for file_name in list(filter(lambda file: file.endswith(extension) , os.listdir(path))) ]
 
-def create_tidy_dataset(data):
-    '''Creates a tidy complient pandas dataset.
+def create_tidy_dataframe_list(data):
+    '''Creates a tidy complient pandas dataset that will later by analyzed by curveball.
 
     Parameters
     ----------
@@ -144,20 +159,26 @@ def create_tidy_dataset(data):
 
     Returns
     -------
-    pandas.DataFrame
+    list[{(int, int) : pandas.DataFrame}]
 
     Examples
     --------   
-    >>> tidy_ds = create_tidy_dataset(parsed_data)
+    >>> tidy_df_list = create_tidy_dataframe_list(parsed_data)
     '''
 
+    # List of dictionaries of dataframes with a key of (row_index, columb_index) for each well in each plate
+    result = []
+
+    # Loop through all plates and collect the data in a way that is analyzeable by curveball down the line
     for experiment_data in data:
-         for row_index, columb_index in experiment_data.ODs:
-            for well_ODs in experiment_data.ODs[(row_index, columb_index)]:
-                aaa = well_ODs
+        # Create an empty dictionary to hold 
+        result.append({})
+        for row_index, columb_index in experiment_data.ODs:
+            # Create the dictionary that will be converted to the dataframe
+            d = {'Time': experiment_data.times, 'OD': experiment_data.ODs[(row_index, columb_index)], 'Temp[°C]': experiment_data.temps}
+            result[-1][(row_index, columb_index)] = pd.DataFrame(data=d)
 
-
-    return 'a'
+    return result
 
 if __name__ == "__main__":
     main()
