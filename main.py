@@ -3,7 +3,6 @@ import curveball
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.stats.stats import mode
 from experiment_data import ExperimentData 
 
 def main():
@@ -20,24 +19,25 @@ def main():
     # Get the data from the files
     parsed_data = read_data(input_directory, extensions)
 
-    # Generate data for analysis by curveball
-    tidy_df_list = create_tidy_dataframe_list(parsed_data)
+    # Analysis data using curveball
+    get_growth_paramenters(parsed_data)
 
-
-    # Curveball - not yet working but getting there
+    
+    # ex_data = tidy_df_list[0][(5,9)]
     # ex_data = tidy_df_list[0][(0,0)]
     # model = curveball.models.fit_model(ex_data, PLOT = False)
-    # params = curveball.models.bootstrap_params(ex_data, model, 1)
+    # time_til_exponent_phase = curveball.models.find_lag(model[0])
+    # max_growth stuff
+    # a - maximum population growth rate
+    # μ - maximum of the per capita growth rate
+    # t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(model[0])
 
-    # has_nu = curveball.models.has_nu(model)
-    # has_lag_phase = curveball.models.has_lag(model)
-    # time_of_lag = curveball.models.find_lag(model, params=params)
-    # max_slope = curveball.models.find_max_growth(model)
-
-    # print(model)
-
+    # # K - maximum population density
+    # max_population_density = model[0].params['K'].value
+    
+    
     # Graph the data and save the figures to the output_directory
-    create_graphs(parsed_data, output_directory)
+    create_graphs(parsed_data, output_directory, "New Title", verbos=True)
 
 
 def read_data(input_directory, extensions):
@@ -100,7 +100,7 @@ def read_data(input_directory, extensions):
                         # This offset comes from the fact that in this expiremnt we don't right-most columb and the index given by itertuples
                         left_offset = 3
                         # Collect all values from the columbs to ODs
-                        for i in range(left_offset, 12):
+                        for i in range(left_offset, 13):
                             # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
                             j = i - left_offset
                             curr_cell = (row_index, j)
@@ -112,7 +112,36 @@ def read_data(input_directory, extensions):
 
     return parsed_data
 
-def create_graphs(data, output_path):
+def get_growth_paramenters(data):
+    '''
+    Train a model and fill fields in the ExperimentData list given
+    Parameters
+    ----------
+    data : ExperimentData object
+        All the data from the expriment
+    Returns
+    -------
+    null
+
+    Examples
+    --------   
+    >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
+    '''
+    tidy_df_list = create_tidy_dataframe_list(data)
+
+    i = 0
+
+    # Loop all plates
+    for experiment_data in data:
+        # Loop all ODs within each plate
+        for row_index, columb_index in experiment_data.ODs:
+            current_model = curveball.models.fit_model(tidy_df_list[i][(row_index, columb_index)], PLOT = False)
+            print(111)
+    i += 1   
+    
+
+
+def create_graphs(data, output_path, title, verbos=False):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -120,7 +149,10 @@ def create_graphs(data, output_path):
         All the data from the expriment
     output_path : str
         path to the file into which the graphes will be saved to
-
+    title: str
+        The title for the graphs
+    verbos: boolean
+        Include extra lines along the Y axis to split up X values
     Returns
     -------
     null
@@ -138,10 +170,26 @@ def create_graphs(data, output_path):
 
             # Create the graph and save it
             fig, ax = plt.subplots()
-            ax.plot(experiment_data.times, experiment_data.ODs[(row_index, columb_index)])
+
+            ax.set_title(title)
             ax.set_xlabel('Time [hours]')
             ax.set_ylabel('OD600')
-            ax.set_title("ODs")
+            ax.plot(experiment_data.times, experiment_data.ODs[(row_index, columb_index)])
+
+            # Adds more data to help with graph analysis
+            if verbos:
+                # Add vertical Lines
+                for xc in range (1, int(experiment_data.times[-1])):
+                    plt.axvline(x=xc)
+
+                # y = 0.05
+                # while y <= max(experiment_data.ODs[(row_index, columb_index)]):
+                #     plt.axhline(y=y, color='r', linestyle='-')
+                #     y += 0.05
+
+                
+
+            
             plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(columb_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
             plt.close()
 
@@ -165,7 +213,6 @@ def create_tidy_dataframe_list(data):
     --------   
     >>> tidy_df_list = create_tidy_dataframe_list(parsed_data)
     '''
-
     # List of dictionaries of dataframes with a key of (row_index, columb_index) for each well in each plate
     result = []
 
