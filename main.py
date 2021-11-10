@@ -20,24 +20,10 @@ def main():
     parsed_data = read_data(input_directory, extensions)
 
     # Analysis data using curveball
-    get_growth_paramenters(parsed_data)
+    get_growth_parameters(parsed_data)
 
-    
-    # ex_data = tidy_df_list[0][(5,9)]
-    # ex_data = tidy_df_list[0][(0,0)]
-    # model = curveball.models.fit_model(ex_data, PLOT = False)
-    # time_til_exponent_phase = curveball.models.find_lag(model[0])
-    # max_growth stuff
-    # a - maximum population growth rate
-    # μ - maximum of the per capita growth rate
-    # t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(model[0])
-
-    # # K - maximum population density
-    # max_population_density = model[0].params['K'].value
-    
-    
     # Graph the data and save the figures to the output_directory
-    create_graphs(parsed_data, output_directory, "New Title", verbos=True)
+    create_graphs(parsed_data, output_directory, "New Title", verbos=False)
 
 
 def read_data(input_directory, extensions):
@@ -59,7 +45,8 @@ def read_data(input_directory, extensions):
     >>> read_data("Root/Folder/where_we_want_to_read_data_from", ("xslx", "csv"))
     '''
     # The index the data we want to analyze starts at
-    cutoff_index = 78
+    #cutoff_index = 78
+    cutoff_index = 42
 
     # The container of the data after parsing but pre proccecing
     parsed_data = []
@@ -77,7 +64,7 @@ def read_data(input_directory, extensions):
                 curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
                 # Create a new object to save data into
                 
-                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name))
+                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}))
 
                 # Load the current sheet of the excel file
                 df = pd.read_excel(excel_file, sheet, header = cutoff_index)
@@ -92,7 +79,7 @@ def read_data(input_directory, extensions):
                     elif row[1] == "Temp. [°C]":
                         parsed_data[-1].temps.append(row[2])
                     # save the OD of the well
-                    elif row[1] == "B" or row[1] == "C" or row[1] == "D" or row[1] == "E" or row[1] == "F" or row[1] == "G":
+                    elif row[1] in ["B", "C", "D" ,"E", "F", "G"]:
                         # Cnvert the character index to numaric index to be used to insert under the desired key in ODs
                         # 66 is the ASCII value of B and afterwards all the values are sequencial
                         row_index = ord(row[1]) - 66
@@ -108,11 +95,14 @@ def read_data(input_directory, extensions):
                                 parsed_data[-1].ODs[curr_cell] = [row[i]]
                             # There is a previous reading for this cell, therefore normalize it against the first read then save it
                             else:
-                                parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
+                                if row[i] == "OVER":
+                                    raise ValueError('a measurement with the value of OVER is in cell ' + str(((row[1]), j + left_offset))  + ' at sheet: ' + sheet + ' please fix and try again')
+                                else:
+                                    parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
 
     return parsed_data
 
-def get_growth_paramenters(data):
+def get_growth_parameters(data):
     '''
     Train a model and fill fields in the ExperimentData list given
     Parameters
@@ -125,22 +115,37 @@ def get_growth_paramenters(data):
 
     Examples
     --------   
-    >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
+    >>> get_growth_parameters(parsed_data)    
     '''
     tidy_df_list = create_tidy_dataframe_list(data)
 
-    i = 0
+    plate_num = 0
 
     # Loop all plates
     for experiment_data in data:
-        # Loop all ODs within each plate
+        # Loop all ODs within each plate and train model
         for row_index, columb_index in experiment_data.ODs:
-            current_model = curveball.models.fit_model(tidy_df_list[i][(row_index, columb_index)], PLOT = False)
-            print(111)
-    i += 1   
+
+            key = (row_index, columb_index)
+
+            current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT = False)
+            begin_exponent_time = curveball.models.find_lag(current_model[0])
+            # max_growth stuff
+            # a - maximum population growth rate
+            # μ - maximum of the per capita growth rate
+            t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
+
+            # K - maximum population density
+            max_population_density = current_model[0].params['K'].value
+
+            # Save model estimations to fields in the object
+            data[plate_num].begin_exponent_time[key] = begin_exponent_time
+            data[plate_num].max_population_gr[key] = a
+            data[plate_num].max_per_capita_gr[key] = mu
+            data[plate_num].max_population_density[key]= max_population_density
     
-
-
+        plate_num += 1   
+    
 def create_graphs(data, output_path, title, verbos=False):
     '''Create graphs from the data collected in previous steps
     Parameters
@@ -165,8 +170,10 @@ def create_graphs(data, output_path, title, verbos=False):
     for experiment_data in data:
         # Loop all ODs within each plate
         for row_index, columb_index in experiment_data.ODs:
+            key = (row_index, columb_index)
+            
             # Set the first value to 0 since it was used to normalize against
-            experiment_data.ODs[(row_index, columb_index)][0] = 0
+            experiment_data.ODs[key][0] = 0
 
             # Create the graph and save it
             fig, ax = plt.subplots()
@@ -174,7 +181,32 @@ def create_graphs(data, output_path, title, verbos=False):
             ax.set_title(title)
             ax.set_xlabel('Time [hours]')
             ax.set_ylabel('OD600')
-            ax.plot(experiment_data.times, experiment_data.ODs[(row_index, columb_index)])
+
+            plt.axhline(y=experiment_data.max_population_density[key], color='black', linestyle='-')
+            plt.axvline(x=experiment_data.begin_exponent_time[key], ymin=0, ymax=1, color='black')
+
+
+            # scalar = 0.025
+            # max_OD = experiment_data.ODs[key][-1]
+            # exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
+            # plt.axvline(x=experiment_data.begin_exponent_time[key], ymin=exponent_begin_OD - (max_OD * scalar), ymax=exponent_begin_OD + (max_OD * scalar), color='black')
+
+            
+
+
+            # Create a list of values in the best fit line
+            #abline_values = [slope * i + intercept for i in x]
+
+            # Plot the best fit line over the actual values
+            # plt.plot(x, y, '--')
+            # plt.plot(x, abline_values, 'b')
+            # plt.title(slope)
+            
+
+
+            # ax.legend()
+
+            ax.plot(experiment_data.times, experiment_data.ODs[key])
 
             # Adds more data to help with graph analysis
             if verbos:
@@ -187,9 +219,6 @@ def create_graphs(data, output_path, title, verbos=False):
                 #     plt.axhline(y=y, color='r', linestyle='-')
                 #     y += 0.05
 
-                
-
-            
             plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(columb_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
             plt.close()
 
