@@ -1,6 +1,7 @@
 import os
 import curveball
 import numpy as np
+from numpy.core.fromnumeric import ptp
 import pandas as pd
 import matplotlib.pyplot as plt
 from experiment_data import ExperimentData 
@@ -13,23 +14,27 @@ def main():
     # The directory into which all the graphs will be saved
     output_directory = base_path + "/Out"
     
+    # Stores all the error messages for logging
     err_log = []
 
     # Tuple with the all the extensions all the data files
     extensions = (".xlsx")
-    
-    # Get the data from the files
-    parsed_data = read_data(input_directory, extensions, err_log)
 
+    # Get the data from the files
+    # Full run
+    #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
+    # Test run    
+    parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+    
     # Analysis of the data using curveball
     get_growth_parameters(parsed_data, err_log)
 
     # Graph the data and save the figures to the output_directory
-    create_graphs(parsed_data, output_directory, "New Title", err_log, False)
+    create_graphs(parsed_data, output_directory, "Foo Bar", err_log, False)
 
     save_err_log(output_directory, "Error log", err_log)
 
-def read_data(input_directory, extensions, err_log):
+def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
@@ -38,19 +43,20 @@ def read_data(input_directory, extensions, err_log):
         The path to the folder where all the data we want to analyze is stored
     extensions : (str, str, ...)
         tuple with all the files with a given file extension we wish to include in the analysis
+    err_log : [str]
+        a refernce to the list containing all the previosuly logged errors
+    data_rows:
+        A list of all the names of the rows to be analysed, defaults to A to H as in a normal 96 well plate
+  
 
     Returns
     -------
     ExperimentData object
 
     Examples
-    --------   
-    >>> read_data("Root/Folder/where_we_want_to_read_data_from", ("xslx", "csv"))
+    --------
+    >>> read_data("Root/Folder/where_we_want_to_read_data_from", ("xslx", "csv"), err_log, ["B", "C", "D" ,"E", "F", "G"])
     '''
-
-    # The index the data we want to analyze starts at
-    #cutoff_index = 78
-    cutoff_index = 40
 
     # The container of the data after parsing but pre proccecing
     parsed_data = []
@@ -71,7 +77,8 @@ def read_data(input_directory, extensions, err_log):
                 parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}))
 
                 # Load the current sheet of the excel file
-                df = pd.read_excel(excel_file, sheet, header = cutoff_index)
+                df = pd.read_excel(excel_file, sheet)
+                
 
                 # run tourgh all the rows and columns and save the data into object for graphing later
                 # We use 96 well plates but only use the inner wells. That is, we treat the 96 well as a 60 well (6 X 10)
@@ -84,7 +91,7 @@ def read_data(input_directory, extensions, err_log):
                         parsed_data[-1].temps.append(row[2])
                     # save the OD of the well
                     
-                    elif row[1] in ["B", "C", "D" ,"E", "F", "G"]:
+                    elif row[1] in data_rows:
                         # Convert the character index to numaric index to be used to insert under the desired key in ODs
                         # 66 is the ASCII value of B and afterwards all the values are sequencial
                         row_index = ord(row[1]) - 66
@@ -125,7 +132,7 @@ def get_growth_parameters(data, err_log):
     tidy_df_list = create_tidy_dataframe_list(data)
 
 
-    # Use to retrive the needed data frame previosly created
+    # Use to retrive the needed data frame previosly created dataframe
     plate_num = 0
 
     # Loop all plates
@@ -141,13 +148,12 @@ def get_growth_parameters(data, err_log):
                 # μ - maximum of the per capita growth rate
                 t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
 
-                # K - maximum population density
-                max_population_density = current_model[0].params['K'].value
+                max_population_density = max(experiment_data.ODs[key])
 
                 # Save model estimations to fields in the object
                 experiment_data.begin_exponent_time[key] = begin_exponent_time
-                experiment_data.max_population_gr[key] = a
-                experiment_data.max_per_capita_gr[key] = mu
+                experiment_data.max_population_gr[key] = (t1, y1, a)
+                experiment_data.max_per_capita_gr[key] = (t2, y2, mu)
                 experiment_data.max_population_density[key]= max_population_density
             except Exception as e:
                 add_line_to_error_log(err_log, "Fitting of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
@@ -196,24 +202,20 @@ def create_graphs(data, output_path, title, err_log, verbos=False):
 
             # Check if there are values or if the fitting failed for the cell
             if key in experiment_data.max_population_density and key in experiment_data.begin_exponent_time :
-                plt.axhline(y=experiment_data.max_population_density[key], color='black', linestyle='-')
-                plt.axvline(x=experiment_data.begin_exponent_time[key], ymin=0, ymax=1, color='black')
+                max_OD = experiment_data.max_population_density[key]
+                plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, 3)))
+                
+                exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
+                plt.scatter([experiment_data.begin_exponent_time[key]], [exponent_begin_OD], s=60 ,alpha=0.6, label='end of leg phase: ')#+ str(round([experiment_data.begin_exponent_time[key]], 3)) + '[hours]')
 
-                # scalar = 0.025
-                # max_OD = experiment_data.ODs[key][-1]
-                # exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
-                # plt.axvline(x=experiment_data.begin_exponent_time[key], ymin=exponent_begin_OD - (max_OD * scalar), ymax=exponent_begin_OD + (max_OD * scalar), color='black')
+                # Graph max_population_gr
+                x, y, slope = experiment_data.max_population_gr[key]
 
-                # Create a list of values in the best fit line
-                #abline_values = [slope * i + intercept for i in x]
-
-                # Plot the best fit line over the actual values
-                # plt.plot(x, y, '--')
-                # plt.plot(x, abline_values, 'b')
-                # plt.title(slope)
-            
-            
-            # ax.legend()
+                plt.axline((x, y), slope=slope, color='red', linestyle=':', label='maximum population growth rate:' + str(round(slope, 3)))
+                plt.scatter([x], [y] ,s=60 ,alpha=0.6)
+                
+                
+                plt.legend(loc="lower right")
 
             # Adds more data to help with graph analysis
             if verbos:
@@ -288,6 +290,27 @@ def save_err_log(path, name, err_log):
     with open(path + "/" + name + ".txt", 'w') as file:
         file.writelines("% s\n" % line for line in err_log)
 
+def get_intersect(x, y, slope):
+    '''Get the y intersect of the linear function passing through the point (x, y) with the given slope
+
+    Parameters
+    ----------
+    x : float
+        The x value for the point
+    y: float
+        The x value for the point
+    slope: float
+        The slope of the function
+
+    Returns
+    -------
+    int
+
+    Examples
+    --------   
+    >>> get_intersect(1, 1, 5)
+    '''
+    return (-x)*slope + y
 
 if __name__ == "__main__":
     main()
