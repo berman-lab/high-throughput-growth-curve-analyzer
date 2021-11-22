@@ -16,6 +16,8 @@ def main():
     
     # Stores all the error messages for logging
     err_log = []
+    # The amount of digits after the decimal point to show in plots
+    decimal_percision_in_plots = 3
 
     # Tuple with the all the extensions all the data files
     extensions = (".xlsx")
@@ -30,7 +32,7 @@ def main():
     get_growth_parameters(parsed_data, err_log)
 
     # Graph the data and save the figures to the output_directory
-    create_graphs(parsed_data, output_directory, "Foo Bar", err_log, False)
+    create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
 
     save_err_log(output_directory, "Error log", err_log)
 
@@ -74,7 +76,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                 curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
                 # Create a new object to save data into
                 
-                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}))
+                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}))
 
                 # Load the current sheet of the excel file
                 df = pd.read_excel(excel_file, sheet)
@@ -145,7 +147,6 @@ def get_growth_parameters(data, err_log):
                 begin_exponent_time = curveball.models.find_lag(current_model[0])
                 # max_growth stuff
                 # a - maximum population growth rate
-                # μ - maximum of the per capita growth rate
                 t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
 
                 max_population_density = max(experiment_data.ODs[key])
@@ -153,7 +154,6 @@ def get_growth_parameters(data, err_log):
                 # Save model estimations to fields in the object
                 experiment_data.begin_exponent_time[key] = begin_exponent_time
                 experiment_data.max_population_gr[key] = (t1, y1, a)
-                experiment_data.max_per_capita_gr[key] = (t2, y2, mu)
                 experiment_data.max_population_density[key]= max_population_density
             except Exception as e:
                 add_line_to_error_log(err_log, "Fitting of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
@@ -161,7 +161,7 @@ def get_growth_parameters(data, err_log):
     
         plate_num += 1   
     
-def create_graphs(data, output_path, title, err_log, verbos=False):
+def create_graphs(data, output_path, title, err_log, decimal_percision, verbos=False):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -171,6 +171,10 @@ def create_graphs(data, output_path, title, err_log, verbos=False):
         path to the file into which the graphes will be saved to
     title: str
         The title for the graphs
+    err_log: [str]
+        a refernce to the list containing all the previosuly logged errors
+    decimal_percision: int
+        The amount of digits after the decimal point to show in the labels
     verbos: boolean
         Include extra lines along the Y axis to split up X values
     Returns
@@ -186,7 +190,9 @@ def create_graphs(data, output_path, title, err_log, verbos=False):
         # Loop all ODs within each plate
         for row_index, column_index in experiment_data.ODs:
             key = (row_index, column_index)
-            
+            point_size = 50
+            alpha = 0.6
+
             # Set the first value to 0 since it was used to normalize against
             experiment_data.ODs[key][0] = 0
 
@@ -202,18 +208,27 @@ def create_graphs(data, output_path, title, err_log, verbos=False):
 
             # Check if there are values or if the fitting failed for the cell
             if key in experiment_data.max_population_density and key in experiment_data.begin_exponent_time :
+                # Max OD plotting
                 max_OD = experiment_data.max_population_density[key]
-                plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, 3)))
+                plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, decimal_percision)))
                 
+                # End of lag phase plotting
+                # Find the time the matches the OD the fittment returned as the OD in which the lag phase ended
                 exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
-                plt.scatter([experiment_data.begin_exponent_time[key]], [exponent_begin_OD], s=60 ,alpha=0.6, label='end of leg phase: ')#+ str(round([experiment_data.begin_exponent_time[key]], 3)) + '[hours]')
+                # Create and format the string for the label
+                end_of_lag_str = str(round(experiment_data.begin_exponent_time[key], decimal_percision)) + ' hours'
+                # plot the point with the label
+                plt.scatter([experiment_data.begin_exponent_time[key]], [exponent_begin_OD], s=point_size ,alpha=alpha, label='end of leg phase: ' + end_of_lag_str)
 
-                # Graph max_population_gr
+                # max population growth rate plotting
                 x, y, slope = experiment_data.max_population_gr[key]
-
-                plt.axline((x, y), slope=slope, color='red', linestyle=':', label='maximum population growth rate:' + str(round(slope, 3)))
-                plt.scatter([x], [y] ,s=60 ,alpha=0.6)
-                
+                # print()
+                # print(key)
+                # print("x:" + str(x))
+                # print("y:" + str(y))
+                # Plot the point and the linear function matching the max population growth rate
+                plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
+                plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
                 
                 plt.legend(loc="lower right")
 

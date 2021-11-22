@@ -13,8 +13,5 @@ class ExperimentData:
     # maximum population growth rate - denoted by 'a' sometimes
     # under the hood: (x, y, slope)
     max_population_gr : field(default_factory=dict)
-    # maximum of the per capita growth rate - denoted by μ sometimes
-    # under the hood: (x, y, slope)
-    max_per_capita_gr : field(default_factory=dict)
     # maximal poplution density -  denoted by k sometimes
     max_population_density : field(default_factory=dict)
