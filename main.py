@@ -24,9 +24,9 @@ def main():
 
     # Get the data from the files
     # Full run
-    #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
+    parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
     # Test run    
-    parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+    #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
     
     # Analysis of the data using curveball
     get_growth_parameters(parsed_data, err_log)
@@ -143,7 +143,7 @@ def get_growth_parameters(data, err_log):
         for row_index, column_index in experiment_data.ODs:
             try:
                 key = (row_index, column_index)
-                current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT = False)
+                current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
                 begin_exponent_time = curveball.models.find_lag(current_model[0])
                 # max_growth stuff
                 # a - maximum population growth rate
@@ -161,7 +161,7 @@ def get_growth_parameters(data, err_log):
     
         plate_num += 1   
     
-def create_graphs(data, output_path, title, err_log, decimal_percision, verbos=False):
+def create_graphs(data, output_path, title, err_log, decimal_percision):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -175,8 +175,6 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, verbos=F
         a refernce to the list containing all the previosuly logged errors
     decimal_percision: int
         The amount of digits after the decimal point to show in the labels
-    verbos: boolean
-        Include extra lines along the Y axis to split up X values
     Returns
     -------
     null
@@ -222,25 +220,11 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, verbos=F
 
                 # max population growth rate plotting
                 x, y, slope = experiment_data.max_population_gr[key]
-                # print()
-                # print(key)
-                # print("x:" + str(x))
-                # print("y:" + str(y))
                 # Plot the point and the linear function matching the max population growth rate
                 plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
                 plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
                 
                 plt.legend(loc="lower right")
-
-            # Adds more data to help with graph analysis
-            if verbos:
-                # Add vertical Lines
-                for xc in range (1, int(experiment_data.times[-1])):
-                    plt.axvline(x=xc)
-                y = 0.05
-                while y <= max(experiment_data.ODs[(row_index, column_index)]):
-                    plt.axhline(y=y, color='r', linestyle='-')
-                    y += 0.05
 
             # Save the figure
             plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(column_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
@@ -304,28 +288,6 @@ def add_line_to_error_log(log, new_line):
 def save_err_log(path, name, err_log):
     with open(path + "/" + name + ".txt", 'w') as file:
         file.writelines("% s\n" % line for line in err_log)
-
-def get_intersect(x, y, slope):
-    '''Get the y intersect of the linear function passing through the point (x, y) with the given slope
-
-    Parameters
-    ----------
-    x : float
-        The x value for the point
-    y: float
-        The x value for the point
-    slope: float
-        The slope of the function
-
-    Returns
-    -------
-    int
-
-    Examples
-    --------   
-    >>> get_intersect(1, 1, 5)
-    '''
-    return (-x)*slope + y
 
 if __name__ == "__main__":
     main()
