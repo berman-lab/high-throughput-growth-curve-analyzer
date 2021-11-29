@@ -144,22 +144,38 @@ def get_growth_parameters(data, err_log):
             try:
                 key = (row_index, column_index)
                 current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
+                # Find the time of the lag phase length
                 begin_exponent_time = curveball.models.find_lag(current_model[0])
-                # max_growth stuff
-                # a - maximum population growth rate
-                t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
+                # max_growth                 
+                #t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
+
+                # Git a polynomial to the data to get the point in which we get the maximum slope
+                coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 20)
+                fitted_polynomial = np.poly1d(coefficients)
+                # Derevite to get all the slopes
+                growth_slope = fitted_polynomial.deriv()
+                # Run on each value in the range to get it's slope
+                slopes = growth_slope(experiment_data.times)
+                # Retrive the maximal slope
+                max_slope = max(slopes)
+                # Retrive the index of the point
+                max_slope_index = np.argmax(slopes).T
+                
+                # Get the time and OD of the point
+                t1 = experiment_data.times[max_slope_index]
+                y1 = experiment_data.ODs[key][max_slope_index]
 
                 max_population_density = max(experiment_data.ODs[key])
 
                 # Save model estimations to fields in the object
                 experiment_data.begin_exponent_time[key] = begin_exponent_time
-                experiment_data.max_population_gr[key] = (t1, y1, a)
+                experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
             except Exception as e:
                 add_line_to_error_log(err_log, "Fitting of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
                  " failed with the following exception mesaage: " + str(e))
     
-        plate_num += 1   
+        plate_num += 1
     
 def create_graphs(data, output_path, title, err_log, decimal_percision):
     '''Create graphs from the data collected in previous steps
