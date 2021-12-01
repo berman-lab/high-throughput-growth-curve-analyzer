@@ -143,29 +143,16 @@ def get_growth_parameters(data, err_log):
         for row_index, column_index in experiment_data.ODs:
             try:
                 key = (row_index, column_index)
-                current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
+                filtered_df = tidy_df_list[plate_num][key][tidy_df_list[plate_num][key]['Time'] <= 48]
+                current_model = curveball.models.fit_model(filtered_df, PLOT=False)
                 # Find the time of the lag phase length
                 begin_exponent_time = curveball.models.find_lag(current_model[0])
-                # max_growth                 
-                #t1, y1, a, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
-
-                # Git a polynomial to the data to get the point in which we get the maximum slope
-                coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 20)
-                fitted_polynomial = np.poly1d(coefficients)
-                # Derevite to get all the slopes
-                growth_slope = fitted_polynomial.deriv()
-                # Run on each value in the range to get it's slope
-                slopes = growth_slope(experiment_data.times)
-                # Retrive the maximal slope
-                max_slope = max(slopes)
-                # Retrive the index of the point
-                max_slope_index = np.argmax(slopes).T
                 
-                # Get the time and OD of the point
-                t1 = experiment_data.times[max_slope_index]
-                y1 = experiment_data.ODs[key][max_slope_index]
+                # max_growth             
+                t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
 
-                max_population_density = max(experiment_data.ODs[key])
+                #max_population_density = max(experiment_data.ODs[key])
+                max_population_density = max(filtered_df["OD"])
 
                 # Save model estimations to fields in the object
                 experiment_data.begin_exponent_time[key] = begin_exponent_time
