@@ -1,7 +1,6 @@
 import os
 import curveball
 import numpy as np
-from numpy.core.fromnumeric import ptp
 import pandas as pd
 import matplotlib.pyplot as plt
 from experiment_data import ExperimentData 
