@@ -1,5 +1,7 @@
 import os
+import gc
 import curveball
+import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -13,6 +15,9 @@ def main():
     # The directory into which all the graphs will be saved
     output_directory = base_path + "/Out"
     
+    # Matplotlib backend mode - a non-interactive backend that can only write to files
+    matplotlib.use("Agg")
+
     # Stores all the error messages for logging
     err_log = []
     # The amount of digits after the decimal point to show in plots
@@ -189,16 +194,16 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
     for experiment_data in data:
         # Loop all ODs within each plate
         for row_index, column_index in experiment_data.ODs:
+
             key = (row_index, column_index)
             point_size = 50
             alpha = 0.6
 
             # Set the first value to 0 since it was used to normalize against
-            experiment_data.ODs[key][0] = 0
+            experiment_data.ODs[key][0] = 0            
 
-            # Create the graph and save it
+            # Setup axis and the figure objects
             fig, ax = plt.subplots()
-
             ax.set_title(title)
             ax.set_xlabel('Time [hours]')
             ax.set_ylabel('OD600')
@@ -230,7 +235,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
 
             # Save the figure
             plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(column_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
-            plt.close()
+            plt.close('all')
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
