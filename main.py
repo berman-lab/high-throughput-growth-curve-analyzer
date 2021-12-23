@@ -1,5 +1,5 @@
+from logging import exception
 import os
-import gc
 import curveball
 import matplotlib
 import numpy as np
@@ -28,9 +28,9 @@ def main():
 
     # Get the data from the files
     # Full run
-    parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
+    #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
     # Test run    
-    #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+    parsed_data = read_data(input_directory, extensions, err_log, ["B"])
     
     # Analysis of the data using curveball
     get_growth_parameters(parsed_data, err_log)
@@ -80,7 +80,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                 curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
                 # Create a new object to save data into
                 
-                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}))
+                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}))
 
                 # Load the current sheet of the excel file
                 df = pd.read_excel(excel_file, sheet)
@@ -147,22 +147,36 @@ def get_growth_parameters(data, err_log):
         for row_index, column_index in experiment_data.ODs:
             try:
                 key = (row_index, column_index)
-                filtered_df = tidy_df_list[plate_num][key][tidy_df_list[plate_num][key]['Time'] <= 48]
-                current_model = curveball.models.fit_model(filtered_df, PLOT=False)
+                # Fit a function with a lag phase to the data
+                current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
+
                 # Find the time of the lag phase length
                 begin_exponent_time = curveball.models.find_lag(current_model[0])
                 
                 # max_growth             
                 t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
 
-                #max_population_density = max(experiment_data.ODs[key])
-                max_population_density = max(filtered_df["OD"])
+                max_population_density = max(experiment_data.ODs[key])
+                
+                # fit the exponential growth phase with a linear function to find the end of it
+                t = np.asarray(experiment_data.times)
+                N = np.asarray(experiment_data.ODs[key])
+                slope, intercept = curveball.models.fit_exponential_growth_phase(t, N, k=2)
+                
+                # Create a point from the intercept and slope
+                t_OD_positive = 0
+                new_intercept = -1
+                while new_intercept < 0 :
+                    t_OD_positive += 1
+                    new_intercept = intercept + (slope * t_OD_positive)
 
                 # Save model estimations to fields in the object
                 experiment_data.begin_exponent_time[key] = begin_exponent_time
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
+                experiment_data.exponent_estimations[key] = (t_OD_positive, new_intercept, slope)
             except Exception as e:
+                print(str(e))
                 add_line_to_error_log(err_log, "Fitting of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
                  " failed with the following exception mesaage: " + str(e))
     
@@ -198,44 +212,57 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
             key = (row_index, column_index)
             point_size = 50
             alpha = 0.6
+            
+            try:
+                # Set the first value to 0 since it was used to normalize against
+                experiment_data.ODs[key][0] = 0            
 
-            # Set the first value to 0 since it was used to normalize against
-            experiment_data.ODs[key][0] = 0            
+                # Setup axis and the figure objects
+                fig, ax = plt.subplots()
+                ax.set_title(title)
+                ax.set_xlabel('Time [hours]')
+                ax.set_ylabel('OD600')
 
-            # Setup axis and the figure objects
-            fig, ax = plt.subplots()
-            ax.set_title(title)
-            ax.set_xlabel('Time [hours]')
-            ax.set_ylabel('OD600')
+                # Plot the main graph
+                ax.plot(experiment_data.times, experiment_data.ODs[key])
 
-            # Plot the main graph
-            ax.plot(experiment_data.times, experiment_data.ODs[key])
+                # If there is a value for the parameter than graph it, otherwise leave it out
 
-            # Check if there are values or if the fitting failed for the cell
-            if key in experiment_data.max_population_density and key in experiment_data.begin_exponent_time :
-                # Max OD plotting
-                max_OD = experiment_data.max_population_density[key]
-                plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, decimal_percision)))
+                if key in experiment_data.max_population_density:
+                    # Max OD plotting
+                    max_OD = experiment_data.max_population_density[key]
+                    plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, decimal_percision)))
+
+                if key in experiment_data.begin_exponent_time:
+                    # End of lag phase plotting
+                    # Find the time the matches the OD the fittment returned as the OD in which the lag phase ended
+                    exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
+                    # Create and format the string for the label
+                    end_of_lag_str = str(round(experiment_data.begin_exponent_time[key], decimal_percision)) + ' hours'
+                    # plot the point with the label
+                    plt.scatter([experiment_data.begin_exponent_time[key]], [exponent_begin_OD], s=point_size ,alpha=alpha, label='end of leg phase: ' + end_of_lag_str)
                 
-                # End of lag phase plotting
-                # Find the time the matches the OD the fittment returned as the OD in which the lag phase ended
-                exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
-                # Create and format the string for the label
-                end_of_lag_str = str(round(experiment_data.begin_exponent_time[key], decimal_percision)) + ' hours'
-                # plot the point with the label
-                plt.scatter([experiment_data.begin_exponent_time[key]], [exponent_begin_OD], s=point_size ,alpha=alpha, label='end of leg phase: ' + end_of_lag_str)
+                if key in experiment_data.exponent_estimations:
+                    # max population growth rate plotting
+                    x, y, slope = experiment_data.max_population_gr[key]
+                    # Plot the point and the linear function matching the max population growth rate
+                    plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
+                    # plot the point on the graph at which this occures
+                    plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-                # max population growth rate plotting
-                x, y, slope = experiment_data.max_population_gr[key]
-                # Plot the point and the linear function matching the max population growth rate
-                plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
-                plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
-                
+                    # Graph the linear exponent approximation made by curveball in previous steps
+                    x, y, slope = experiment_data.exponent_estimations[key]
+                    plt.axline((x, y), slope=slope, color='blue', linestyle=':', label='linear exponent approximation' + str(round(slope, decimal_percision)))
+                    
+                    
                 plt.legend(loc="lower right")
-
-            # Save the figure
-            plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(column_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
-            plt.close('all')
+                # Save the figure
+                plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(column_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
+            except Exception as e:
+                print(str(e))
+                add_line_to_error_log(err_log, "Graphing of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
+                " failed with the following exception mesaage: " + str(e))
+                plt.close('all')
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''

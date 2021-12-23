@@ -15,3 +15,7 @@ class ExperimentData:
     max_population_gr : field(default_factory=dict)
     # maximal poplution density -  denoted by k sometimes
     max_population_density : field(default_factory=dict)
+
+    # fit_exponential_growth_phase results
+    # under the hood : (x, y, slope)
+    exponent_estimations : field(default_factory=dict)
