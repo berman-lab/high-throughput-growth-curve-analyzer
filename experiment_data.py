@@ -9,13 +9,18 @@ class ExperimentData:
     file_name : str
 
     # Growth curve parameters estimations
-    begin_exponent_time : field(default_factory=dict)
+    
+    # The end of the lag phase. It's also the begining of the exponent
+    # under the hood: (exponent_begin_time, exponent_begin_OD)
+    exponent_begin : field(default_factory=dict)
+    
+    # The end of the exponent phase
+    # under the hood: (exponent_end_time, exponent_end_OD)
+    exponent_end: field(default_factory=dict)
+    
     # maximum population growth rate - denoted by 'a' sometimes
     # under the hood: (x, y, slope)
     max_population_gr : field(default_factory=dict)
-    # maximal poplution density -  denoted by k sometimes
+    
+    # maximal poplution density
     max_population_density : field(default_factory=dict)
-
-    # fit_exponential_growth_phase results
-    # under the hood : (x, y, slope)
-    exponent_estimations : field(default_factory=dict)
