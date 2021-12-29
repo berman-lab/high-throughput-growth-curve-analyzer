@@ -1,4 +1,3 @@
-from logging import exception
 import os
 import curveball
 import matplotlib
@@ -32,7 +31,7 @@ def main():
     # Test run    
     parsed_data = read_data(input_directory, extensions, err_log, ["B"])
     
-    # Analysis of the data using curveball
+    # Analysis of the data
     get_growth_parameters(parsed_data, err_log)
 
     # Graph the data and save the figures to the output_directory
@@ -146,35 +145,59 @@ def get_growth_parameters(data, err_log):
         # Loop all ODs within each plate and train model
         for row_index, column_index in experiment_data.ODs:
             try:
-                key = (row_index, column_index)
+                key = (row_index, column_index)               
                 # Fit a function with a lag phase to the data
-                current_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
-
-                # Find the time of the lag phase length
-                begin_exponent_time = curveball.models.find_lag(current_model[0])
+                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
                 
-                # max_growth             
-                t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_model[0])
+                # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
+                exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
+                exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, experiment_data.ODs[key])
 
+                # Get the maximal obsereved OD
                 max_population_density = max(experiment_data.ODs[key])
-                
-                # fit the exponential growth phase with a linear function to find the end of it
-                t = np.asarray(experiment_data.times)
-                N = np.asarray(experiment_data.ODs[key])
-                slope, intercept = curveball.models.fit_exponential_growth_phase(t, N, k=2)
-                
-                # Create a point from the intercept and slope
-                t_OD_positive = 0
-                new_intercept = -1
-                while new_intercept < 0 :
-                    t_OD_positive += 1
-                    new_intercept = intercept + (slope * t_OD_positive)
 
+                # max_growth             
+                # Fit a polynomial to the data to get the point in which we get the maximum slope
+                coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 20)
+                fitted_polynomial = np.poly1d(coefficients)
+                # Derevite to get all the slopes
+                growth_slope = fitted_polynomial.deriv()
+                # Run on each value in the range to get it's slope
+                slopes = growth_slope([time for time in experiment_data.times if time > exponent_begin_time])
+
+                # Make sure to account for the removed items index with an offset
+                filter_compensation_offset = len(experiment_data.times) - len(slopes)
+
+                # Retrive the maximal slope
+                max_slope = max(slopes)
+                # Retrive the index of the point
+                max_slope_index = np.argmax(slopes).T + filter_compensation_offset
+
+                # Get the time and OD of the point
+                t1 = experiment_data.times[max_slope_index]
+                y1 = experiment_data.ODs[key][max_slope_index]
+
+                # Find the end of the exponent phase
+                exponent_end_time = None
+                exponent_end_OD = None
+
+                # Start the search from the point after the point in which the maximal slope was observed
+                # Look for the point in which the slope has decreased by at least 90 percent
+                i = max_slope_index + 1
+                while i < len(slopes):
+                    # Make sure to refrence the right element in slopes by offsetting
+                    if slopes[i - filter_compensation_offset] <= max_slope * 0.1:
+                        exponent_end_time = experiment_data.times[i]
+                        exponent_end_OD = np.interp(exponent_end_time, experiment_data.times, experiment_data.ODs[key])
+                        break
+                    i += 1
+                        
                 # Save model estimations to fields in the object
-                experiment_data.begin_exponent_time[key] = begin_exponent_time
+                experiment_data.exponent_begin[key] = (exponent_begin_time, exponent_begin_OD)
+                experiment_data.exponent_end[key] = (exponent_end_time, exponent_end_OD)
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
-                experiment_data.exponent_estimations[key] = (t_OD_positive, new_intercept, slope)
+                
             except Exception as e:
                 print(str(e))
                 add_line_to_error_log(err_log, "Fitting of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
@@ -204,14 +227,16 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
     --------   
     >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
     '''
+
+    point_size = 50
+    alpha = 0.6
+
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate
         for row_index, column_index in experiment_data.ODs:
 
             key = (row_index, column_index)
-            point_size = 50
-            alpha = 0.6
             
             try:
                 # Set the first value to 0 since it was used to normalize against
@@ -228,41 +253,48 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
 
                 # If there is a value for the parameter than graph it, otherwise leave it out
 
+                # Max OD plotting
                 if key in experiment_data.max_population_density:
-                    # Max OD plotting
                     max_OD = experiment_data.max_population_density[key]
                     plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, decimal_percision)))
 
-                if key in experiment_data.begin_exponent_time:
-                    # End of lag phase plotting
-                    # Find the time the matches the OD the fittment returned as the OD in which the lag phase ended
-                    exponent_begin_OD = np.interp(experiment_data.begin_exponent_time[key], experiment_data.times, experiment_data.ODs[key])
+                # End of lag phase plotting
+                if key in experiment_data.exponent_begin:
+                    exponent_begin_time, exponent_begin_OD = experiment_data.exponent_begin[key]
                     # Create and format the string for the label
-                    end_of_lag_str = str(round(experiment_data.begin_exponent_time[key], decimal_percision)) + ' hours'
+                    end_of_lag_str = str(round(exponent_begin_time, decimal_percision)) + ' hours'
                     # plot the point with the label
-                    plt.scatter([experiment_data.begin_exponent_time[key]], [exponent_begin_OD], s=point_size ,alpha=alpha, label='end of leg phase: ' + end_of_lag_str)
-                
-                if key in experiment_data.exponent_estimations:
-                    # max population growth rate plotting
+                    plt.scatter([exponent_begin_time], [exponent_begin_OD], s=point_size ,alpha=alpha, label='end of leg phase: ' + end_of_lag_str)
+
+                # End of exponential phase
+                if key in experiment_data.exponent_end:
+                    exponent_end_time, exponent_end_OD = experiment_data.exponent_end[key]
+                    # Make sure none of them is "None"
+                    if exponent_end_time != None and exponent_end_OD != None:
+                        # Create and format the string for the label
+                        end_of_exponent_str = str(round(exponent_end_time, decimal_percision)) + ' hours'
+                        # plot the point with the label
+                        plt.scatter([exponent_end_time], [exponent_end_OD], c=["royalblue"], s=point_size ,alpha=alpha, label='end of the exponential phase: ' + end_of_exponent_str)
+
+                # Max population growth rate plotting
+                if key in experiment_data.max_population_gr:
                     x, y, slope = experiment_data.max_population_gr[key]
                     # Plot the point and the linear function matching the max population growth rate
                     plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
                     # plot the point on the graph at which this occures
                     plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-                    # Graph the linear exponent approximation made by curveball in previous steps
-                    x, y, slope = experiment_data.exponent_estimations[key]
-                    plt.axline((x, y), slope=slope, color='blue', linestyle=':', label='linear exponent approximation' + str(round(slope, decimal_percision)))
-                    
-                    
                 plt.legend(loc="lower right")
                 # Save the figure
                 plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(column_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
+                
             except Exception as e:
                 print(str(e))
                 add_line_to_error_log(err_log, "Graphing of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
                 " failed with the following exception mesaage: " + str(e))
+            finally:
                 plt.close('all')
+                continue
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
