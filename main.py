@@ -35,7 +35,11 @@ def main():
     get_growth_parameters(parsed_data, err_log)
 
     # Graph the data and save the figures to the output_directory
-    create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
+    #create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
+
+    (df_raw_data, df_wells_summary) = create_data_tables(parsed_data, output_directory,err_log)
+
+    # Check if any of them came out as 'None'
 
     save_err_log(output_directory, "Error log", err_log)
 
@@ -91,7 +95,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                     # save the time of reading from the start of the experiment in seconds
                     if row[1] == "Time [s]":
                         parsed_data[-1].times.append(row[2] / 3600)
-                    # save the tempreture at the time of reading
+                    # save the temperature at the time of reading
                     elif row[1] == "Temp. [°C]":
                         parsed_data[-1].temps.append(row[2])
                     # save the OD of the well
@@ -296,6 +300,97 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
                 plt.close('all')
                 continue
 
+def create_data_tables(experiment_data, output_path, err_log):
+    '''Create tables from the data collected in previous steps.
+    One table will contain all the data we measured during the experiment in an idetifiable way.
+    Fields: filename, plate, well, time, OD, temperature.
+    This table will be refered to as 'raw_data'.
+
+    The second table will contain the results of the calculations made for each well. 
+    Fields: filename, plate, well, exponent_begin_time, exponent_begin_OD, exponent_end_time, exponent_end_OD,
+                   max_population_gr_time, max_population_gr_OD, max_population_gr_slope, max_population_density
+    Thia table will be refered to as 'wells_summary'
+    
+    Parameters
+    ----------
+    data : ExperimentData object
+        All the data from the expriment
+    output_path : str
+        The path to save the result into
+    err_log: [str]
+        a refernce to the list containing all the previosuly logged errors
+    Returns
+    -------
+    tuple in the structure of: (raw_data, wells_summary)
+
+    Examples
+    --------   
+    >>> create_summary_tables(parsed_data, "Root/Folder/where_we_want_files_to_be_saved_into")    
+    '''
+    try:
+        # datasets for the final result to be saved into
+        df_raw_data = None
+        df_wells_summary = None
+        
+        # lists to hold all the data before final storage in dataframes
+
+        # Columns for df_raw_data
+        raw_data_columns = ['filename', 'plate', 'well', 'time', 'OD', 'temperature']
+        # raw_data lists
+        # filename will be set at the end since it will be the same for all rows
+        filename = []
+        raw_data_plate_names = []
+        raw_data_wells = []
+        times = []
+        ODs = []
+        temperatures = []
+
+        # Columns for df_wells_summary
+        wells_summary_columns = [
+            'filename', 'plate, well', 'exponent_begin_time', 'exponent_begin_OD',
+            'exponent_end_time', 'exponent_end_OD', 'max_population_gr_time',
+            'max_population_gr_OD', 'max_population_gr_slope', 'max_population_density'
+        ]
+        # wells_summary lists
+         # filename will be set at the end since it will be the same for all rows
+        filename = []
+        wells_summary_plate_names = []
+        wells_summary_wells = []
+        exponent_begin_time = []
+        exponent_begin_OD = []
+        exponent_end_time = []
+        exponent_end_OD = []
+        max_population_gr_time = []
+        max_population_gr_OD = []
+        max_population_gr_slope = []
+        max_population_density = []
+
+        # Copy the data to the needed format
+        for experiment_data_point in experiment_data:
+        # Loop all ODs within each plate
+            for row_index, column_index in experiment_data_point.ODs:
+                i = 0
+                key = (row_index, column_index)
+                key_as_well = convert_wellkey_to_text(key)
+                for OD in experiment_data_point.ODs[key]:
+                    raw_data_plate_names.append(experiment_data_point.plate_name)
+                    raw_data_wells.append(key_as_well)
+                    times.append(experiment_data_point.times[i])
+                    ODs.append(OD)
+                    temperatures.append(experiment_data_point.temps[i])
+                    i += 1
+                
+
+        #df_raw_data = pd.DataFrame([filename, raw_data_plate_names, raw_data_wells, times, ODs, temperatures], columns=raw_data_columns)
+        # Set the entire filename column to the name of the source file
+    except Exception as e:
+                print(str(e))
+                add_line_to_error_log(err_log, "Creation of data tables had an error at plate: " + experiment_data.plate_name + 
+                " it failed with the following exception mesaage: " + str(e))
+    finally:
+        return (df_raw_data, df_wells_summary)
+
+
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
     return [ path + "/" + file_name for file_name in list(filter(lambda file: file.endswith(extension) , os.listdir(path))) ]
@@ -346,7 +441,7 @@ def convert_wellkey_to_text(key):
     --------   
     >>> convert_wellkey_to_text(key)
     '''
-    return chr(key[0] + 66) + "," + str(key[1] + 3)
+    return chr(key[0] + 66) + str(key[1] + 3)
 
 def add_line_to_error_log(log, new_line):
     log.append(new_line)
