@@ -24,24 +24,24 @@ def main():
 
     # Tuple with the all the extensions all the data files
     extensions = (".xlsx")
+    try:
+        # Get the data from the files
+        # Full run
+        #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
+        # Test run    
+        parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+        
+        # Analysis of the data
+        get_growth_parameters(parsed_data, err_log)
 
-    # Get the data from the files
-    # Full run
-    #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
-    # Test run    
-    parsed_data = read_data(input_directory, extensions, err_log, ["B"])
-    
-    # Analysis of the data
-    get_growth_parameters(parsed_data, err_log)
+        # Graph the data and save the figures to the output_directory
+        create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
 
-    # Graph the data and save the figures to the output_directory
-    #create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
+        df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory,err_log)
 
-    (df_raw_data, df_wells_summary) = create_data_tables(parsed_data, output_directory,err_log)
-
-    # Check if any of them came out as 'None'
-
-    save_err_log(output_directory, "Error log", err_log)
+        # Check if any of them came out as 'None'
+    finally:
+        save_err_log(output_directory, "Error log", err_log)
 
 def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"]):
     '''Read all the data from the files with the given extension in the input directory given
@@ -120,6 +120,11 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                                     raise ValueError('a measurement with the value of OVER is in cell ' + str(((row[1]), j + left_offset))  + ' at sheet: ' + sheet + ' please fix and try again')
                                 else:
                                     parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
+    # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
+    for experiment_data in parsed_data:
+        for row_index, column_index in experiment_data.ODs:
+            experiment_data.ODs[(row_index, column_index)][0] = 0          
+
 
     return parsed_data
 
@@ -140,7 +145,6 @@ def get_growth_parameters(data, err_log):
     '''
     tidy_df_list = create_tidy_dataframe_list(data)
 
-
     # Use to retrive the needed data frame previosly created dataframe
     plate_num = 0
 
@@ -160,9 +164,29 @@ def get_growth_parameters(data, err_log):
                 # Get the maximal obsereved OD
                 max_population_density = max(experiment_data.ODs[key])
 
-                # max_growth             
+                # max_growth 
+                
+                # # Fit an exponent to the data to get the point in which we get the maximum slope
+                # t = np.array(experiment_data.times)
+                # N = np.array(experiment_data.ODs[key])
+
+                # # Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
+                # i = 0
+                # zero_sub = 0.000001
+                # while i < len(t):
+                #     if t[i] == 0:
+                #         t[i] = zero_sub
+                #     if N[i] == 0 or N[i] < 0:
+                #         N[i] = zero_sub
+                #     i += 1
+
+                # # a - slope, b - intercept
+                # a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
+                # # TODO Create the exponent function from the parameters
+
+
                 # Fit a polynomial to the data to get the point in which we get the maximum slope
-                coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 20)
+                coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 15)
                 fitted_polynomial = np.poly1d(coefficients)
                 # Derevite to get all the slopes
                 growth_slope = fitted_polynomial.deriv()
@@ -243,9 +267,6 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
             key = (row_index, column_index)
             
             try:
-                # Set the first value to 0 since it was used to normalize against
-                experiment_data.ODs[key][0] = 0            
-
                 # Setup axis and the figure objects
                 fig, ax = plt.subplots()
                 ax.set_title(title)
@@ -333,12 +354,9 @@ def create_data_tables(experiment_data, output_path, err_log):
         df_wells_summary = None
         
         # lists to hold all the data before final storage in dataframes
-
-        # Columns for df_raw_data
-        raw_data_columns = ['filename', 'plate', 'well', 'time', 'OD', 'temperature']
         # raw_data lists
         # filename will be set at the end since it will be the same for all rows
-        filename = []
+        raw_data_filename = []
         raw_data_plate_names = []
         raw_data_wells = []
         times = []
@@ -373,6 +391,7 @@ def create_data_tables(experiment_data, output_path, err_log):
                 key = (row_index, column_index)
                 key_as_well = convert_wellkey_to_text(key)
                 for OD in experiment_data_point.ODs[key]:
+                    raw_data_filename.append(experiment_data_point.file_name)
                     raw_data_plate_names.append(experiment_data_point.plate_name)
                     raw_data_wells.append(key_as_well)
                     times.append(experiment_data_point.times[i])
@@ -380,16 +399,14 @@ def create_data_tables(experiment_data, output_path, err_log):
                     temperatures.append(experiment_data_point.temps[i])
                     i += 1
                 
-
-        #df_raw_data = pd.DataFrame([filename, raw_data_plate_names, raw_data_wells, times, ODs, temperatures], columns=raw_data_columns)
-        # Set the entire filename column to the name of the source file
+        df_raw_data = pd.DataFrame(data = {'filename': raw_data_filename, 'plate': raw_data_plate_names, 'well': raw_data_wells, 'time': times, 'OD': ODs, 'temperature': temperatures})
+        print(df_raw_data)
     except Exception as e:
                 print(str(e))
                 add_line_to_error_log(err_log, "Creation of data tables had an error at plate: " + experiment_data.plate_name + 
                 " it failed with the following exception mesaage: " + str(e))
     finally:
         return (df_raw_data, df_wells_summary)
-
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
