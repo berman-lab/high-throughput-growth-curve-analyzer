@@ -4,7 +4,8 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from experiment_data import ExperimentData 
+from scipy.optimize import curve_fit
+from experiment_data import ExperimentData
 
 def main():
     # Base config and program parametrs
@@ -29,7 +30,7 @@ def main():
         # Full run
         #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
         # Test run    
-        parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+        parsed_data = read_data(input_directory, extensions, err_log, ["E"])
         
         # Analysis of the data
         get_growth_parameters(parsed_data, err_log)
@@ -83,7 +84,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                 curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
                 # Create a new object to save data into
                 
-                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}))
+                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}, {}))
 
                 # Load the current sheet of the excel file
                 df = pd.read_excel(excel_file, sheet)
@@ -163,27 +164,35 @@ def get_growth_parameters(data, err_log):
 
                 # Get the maximal obsereved OD
                 max_population_density = max(experiment_data.ODs[key])
-
-                # max_growth 
                 
-                # # Fit an exponent to the data to get the point in which we get the maximum slope
-                # t = np.array(experiment_data.times)
-                # N = np.array(experiment_data.ODs[key])
+                # max_growth
+                # prepare data for model fitting
+                times_after_lag_phase = [time for time in experiment_data.times if time > exponent_begin_time]
+                filter_compensation_offset = len(experiment_data.times) - len(times_after_lag_phase)
 
-                # # Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
-                # i = 0
-                # zero_sub = 0.000001
-                # while i < len(t):
-                #     if t[i] == 0:
-                #         t[i] = zero_sub
-                #     if N[i] == 0 or N[i] < 0:
-                #         N[i] = zero_sub
-                #     i += 1
+                t = np.array(times_after_lag_phase)
+                N = np.array(experiment_data.ODs[key][filter_compensation_offset:])
+                
+                # Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
+                i = 0
+                zero_sub = 0.000001
+                while i < len(t):
+                    if t[i] == 0:
+                        t[i] = zero_sub
+                    if N[i] <= 0:
+                        N[i] = zero_sub
+                    i += 1
 
-                # # a - slope, b - intercept
-                # a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
-                # # TODO Create the exponent function from the parameters
-
+                # Fit an exponent to the data to get the point in which we get the maximum slope
+                # a - slope, b - intercept
+                a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
+                
+                N0 = np.exp(b)
+                
+                # Calculate the expected OD value of a point based on the time it was messured
+                ODs_exponent_values = []
+                for time in t:
+                    ODs_exponent_values.append(exponential_phase(N0, a, time))
 
                 # Fit a polynomial to the data to get the point in which we get the maximum slope
                 coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 15)
@@ -225,6 +234,8 @@ def get_growth_parameters(data, err_log):
                 experiment_data.exponent_end[key] = (exponent_end_time, exponent_end_OD)
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
+                experiment_data.temp1[key] = times_after_lag_phase
+                experiment_data.temp2[key] = ODs_exponent_values
                 
             except Exception as e:
                 print(str(e))
@@ -233,6 +244,27 @@ def get_growth_parameters(data, err_log):
     
         plate_num += 1
     
+def exponential_phase(N0, slope, t):
+    '''
+    Calculate the value of a point with N0 * e^(slope * t)
+    Parameters
+    ----------
+    N0 : float
+        The first OD messured for the well after the end of the lag phase
+    slope : float
+        the slope of the the power of the exponenet
+    t: float
+        the time of the messurments in hours
+    Returns
+    -------
+    N0 * e^(slope * t)
+
+    Examples
+    --------   
+    >>> exponential_phase(N0, slope, t)    
+    '''
+    return N0 * np.exp(slope * t)
+
 def create_graphs(data, output_path, title, err_log, decimal_percision):
     '''Create graphs from the data collected in previous steps
     Parameters
@@ -308,6 +340,8 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
                     plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
                     # plot the point on the graph at which this occures
                     plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
+
+                ax.plot(experiment_data.temp1[key], experiment_data.temp2[key])
 
                 plt.legend(loc="lower right")
                 # Save the figure
