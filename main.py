@@ -154,9 +154,10 @@ def get_growth_parameters(data, err_log):
         # Loop all ODs within each plate and train model
         for row_index, column_index in experiment_data.ODs:
             try:
-                key = (row_index, column_index)               
+                key = (row_index, column_index)
+                
                 # Fit a function with a lag phase to the data
-                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
+                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False, PRINT=False)
                 
                 # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
                 exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
@@ -170,9 +171,12 @@ def get_growth_parameters(data, err_log):
                 times_after_lag_phase = [time for time in experiment_data.times if time > exponent_begin_time]
                 filter_compensation_offset = len(experiment_data.times) - len(times_after_lag_phase)
 
-                t = np.array(times_after_lag_phase)
-                N = np.array(experiment_data.ODs[key][filter_compensation_offset:])
-                
+                # t = np.array(times_after_lag_phase)
+                # N = np.array(experiment_data.ODs[key][filter_compensation_offset:])
+
+                t = np.array(experiment_data.times)
+                N = np.array(experiment_data.ODs[key])
+
                 # Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
                 i = 0
                 zero_sub = 0.000001
@@ -184,15 +188,15 @@ def get_growth_parameters(data, err_log):
                     i += 1
 
                 # Fit an exponent to the data to get the point in which we get the maximum slope
-                # a - slope, b - intercept
-                a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
-                
-                N0 = np.exp(b)
                 
                 # Calculate the expected OD value of a point based on the time it was messured
                 ODs_exponent_values = []
+                
+                # a - slope, b - intercept
+                a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
+                N0 = np.exp(b)
                 for time in t:
-                    ODs_exponent_values.append(exponential_phase(N0, a, time))
+                    ODs_exponent_values.append(exponential_phase(time, N0, a))
 
                 # Fit a polynomial to the data to get the point in which we get the maximum slope
                 coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 15)
@@ -228,7 +232,7 @@ def get_growth_parameters(data, err_log):
                         exponent_end_OD = np.interp(exponent_end_time, experiment_data.times, experiment_data.ODs[key])
                         break
                     i += 1
-                        
+
                 # Save model estimations to fields in the object
                 experiment_data.exponent_begin[key] = (exponent_begin_time, exponent_begin_OD)
                 experiment_data.exponent_end[key] = (exponent_end_time, exponent_end_OD)
@@ -244,7 +248,7 @@ def get_growth_parameters(data, err_log):
     
         plate_num += 1
     
-def exponential_phase(N0, slope, t):
+def exponential_phase(t, N0, slope):
     '''
     Calculate the value of a point with N0 * e^(slope * t)
     Parameters
@@ -258,12 +262,14 @@ def exponential_phase(N0, slope, t):
     Returns
     -------
     N0 * e^(slope * t)
-
+ 
     Examples
-    --------   
+    --------  
     >>> exponential_phase(N0, slope, t)    
     '''
     return N0 * np.exp(slope * t)
+
+
 
 def create_graphs(data, output_path, title, err_log, decimal_percision):
     '''Create graphs from the data collected in previous steps
@@ -341,7 +347,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
                     # plot the point on the graph at which this occures
                     plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-                ax.plot(experiment_data.temp1[key], experiment_data.temp2[key])
+                ax.plot(experiment_data.times[:60], experiment_data.temp2[key][:60])
 
                 plt.legend(loc="lower right")
                 # Save the figure
