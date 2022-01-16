@@ -26,4 +26,4 @@ class ExperimentData:
     max_population_density : field(default_factory=dict)
 
     temp1: field(default_factory=dict)
-    temp2: field(default_factory=dict)
+    exponent_ODs: field(default_factory=dict)
