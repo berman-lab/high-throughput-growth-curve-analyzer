@@ -1,4 +1,5 @@
 import os
+import math
 import curveball
 import matplotlib
 import numpy as np
@@ -13,7 +14,9 @@ def main():
     input_directory = base_path + "/In"
     # The directory into which all the graphs will be saved
     output_directory = base_path + "/Out"
-    
+    global zero_sub
+    zero_sub = 0.000001
+
     # Matplotlib backend mode - a non-interactive backend that can only write to files
     matplotlib.use("Agg")
 
@@ -141,7 +144,7 @@ def get_growth_parameters(data, err_log):
 
     Examples
     --------   
-    >>> get_growth_parameters(parsed_data)    
+    >>> get_growth_parameters(parsed_data, err_log)    
     '''
     tidy_df_list = create_tidy_dataframe_list(data)
 
@@ -165,7 +168,7 @@ def get_growth_parameters(data, err_log):
                 # Get the maximal obsereved OD
                 max_population_density = max(experiment_data.ODs[key])
                 
-                # Finding of the exponential phase
+                # Finding the end of the exponential phase
                 t = np.array(experiment_data.times)
                 N = np.array(experiment_data.ODs[key])
                 t, N = remove_normalization_artifacts(t, N)
@@ -182,40 +185,38 @@ def get_growth_parameters(data, err_log):
                     ODs_exponent_values.append(exponential_phase(time, N0, a))
 
 
-                # Fit a polynomial to the data to get the point in which we get the maximum slope
-                coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 15)
-                fitted_polynomial = np.poly1d(coefficients)
-                # Derevite to get all the slopes
-                growth_slope = fitted_polynomial.deriv()
-                # Run on each value in the range to get it's slope
-                slopes = growth_slope([time for time in experiment_data.times if time > exponent_begin_time])
+                # Look for the point in which the distance has increased by at least 95 percent
+                # from the point with the smallest distance between the exponent and the actual data
+                i = 0
+                distances = []
+                smallest_distance = abs(ODs_exponent_values[0] - experiment_data.ODs[key][0])
+                smallest_distance_index = 0
+                while i < len(experiment_data.times):
+                    curr_distance = abs(ODs_exponent_values[i] - experiment_data.ODs[key][i])
+                    distances.append(curr_distance)
+                    if curr_distance < smallest_distance:
+                        smallest_distance = curr_distance
+                        smallest_distance_index = i
+                    i += 1
 
-                # Make sure to account for the removed items index with an offset
-                filter_compensation_offset = len(experiment_data.times) - len(slopes)
-
-                # Retrive the maximal slope
-                max_slope = max(slopes)
-                # Retrive the index of the point
-                max_slope_index = np.argmax(slopes).T + filter_compensation_offset
-
-                # Get the time and OD of the point
-                t1 = experiment_data.times[max_slope_index]
-                y1 = experiment_data.ODs[key][max_slope_index]
-
-                # Find the end of the exponent phase
-                exponent_end_time = None
-                exponent_end_OD = None
-
-                # Start the search from the point after the point in which the maximal slope was observed
-                # Look for the point in which the slope has decreased by at least 90 percent
-                i = max_slope_index + 1
-                while i < len(slopes):
-                    # Make sure to refrence the right element in slopes by offsetting
-                    if slopes[i - filter_compensation_offset] <= max_slope * 0.1:
+                # make sure the miminal distance isn't zero by chance, if it is, set it to zero_sub
+                if smallest_distance == 0:
+                    smallest_distance = zero_sub
+                
+                # Find the first point at which at which the distance between the exponents and the actual data
+                # is grater by 95% or more than smallest_distance
+                i = 0
+                while i < len(experiment_data.times):
+                    if (math.dist((experiment_data.times[i], experiment_data.ODs[key][i]), (experiment_data.times[i], ODs_exponent_values[i])) * 0.05 >= smallest_distance
+                        and i > smallest_distance_index):
                         exponent_end_time = experiment_data.times[i]
-                        exponent_end_OD = np.interp(exponent_end_time, experiment_data.times, experiment_data.ODs[key])
+                        exponent_end_OD = experiment_data.ODs[key][i]
                         break
                     i += 1
+
+                # Max slope calculation
+                # Get the time and OD of the point with the max slope
+                t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
 
                 # Save model estimations to fields in the object
                 experiment_data.exponent_begin[key] = (exponent_begin_time, exponent_begin_OD)
@@ -269,7 +270,6 @@ def remove_normalization_artifacts(t, N):
     >>> remove_normalization_artifacts(t, N)
     '''
     i = 0
-    zero_sub = 0.000001
     while i < len(t):
         if t[i] == 0:
             t[i] = zero_sub
@@ -301,7 +301,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
     --------   
     >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
     '''
-
+    # Styles
     point_size = 50
     alpha = 0.6
 
@@ -322,7 +322,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                 # Plot the main graph
                 ax.plot(experiment_data.times, experiment_data.ODs[key])
 
-                # If there is a value for the parameter than graph it, otherwise leave it out
+                # If there is a value in a parameter than graph it, otherwise leave it out
 
                 # Max OD plotting
                 if key in experiment_data.max_population_density:
@@ -355,15 +355,16 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                     # plot the point on the graph at which this occures
                     plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-
+                # Exponential growth rate graph
                 if draw_exponential_phase:
                     # Find the index in which the exponent croses the maximum of the original data
+                    # + 2 to keep drawing a little more after the exponent croses the max
                     stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 2
                     ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index])
 
                 plt.legend(loc="lower right")
                 # Save the figure
-                plt.savefig(output_path + "/well " + chr(row_index + 66) + "," + str(column_index + 3) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
+                plt.savefig(output_path + "/well " + convert_wellkey_to_text(key) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
                 
             except Exception as e:
                 print(str(e))
@@ -452,7 +453,6 @@ def create_data_tables(experiment_data, output_path, err_log):
                     i += 1
                 
         df_raw_data = pd.DataFrame(data = {'filename': raw_data_filename, 'plate': raw_data_plate_names, 'well': raw_data_wells, 'time': times, 'OD': ODs, 'temperature': temperatures})
-        print(df_raw_data)
     except Exception as e:
                 print(str(e))
                 add_line_to_error_log(err_log, "Creation of data tables had an error at plate: " + experiment_data.plate_name + 
