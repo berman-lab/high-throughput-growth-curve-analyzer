@@ -35,7 +35,7 @@ def main():
         get_growth_parameters(parsed_data, err_log)
 
         # Graph the data and save the figures to the output_directory
-        create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
+        create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots, True)
 
         df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory,err_log)
 
@@ -83,7 +83,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                 curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
                 # Create a new object to save data into
                 
-                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}, {}))
+                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}))
 
                 # Load the current sheet of the excel file
                 df = pd.read_excel(excel_file, sheet)
@@ -165,37 +165,22 @@ def get_growth_parameters(data, err_log):
                 # Get the maximal obsereved OD
                 max_population_density = max(experiment_data.ODs[key])
                 
-                # max_growth
-                # prepare data for model fitting
-                times_after_lag_phase = [time for time in experiment_data.times if time > exponent_begin_time]
-                filter_compensation_offset = len(experiment_data.times) - len(times_after_lag_phase)
-
-                # t = np.array(times_after_lag_phase)
-                # N = np.array(experiment_data.ODs[key][filter_compensation_offset:])
-
+                # Finding of the exponential phase
                 t = np.array(experiment_data.times)
                 N = np.array(experiment_data.ODs[key])
-
-                # Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
-                i = 0
-                zero_sub = 0.000001
-                while i < len(t):
-                    if t[i] == 0:
-                        t[i] = zero_sub
-                    if N[i] <= 0:
-                        N[i] = zero_sub
-                    i += 1
-
-                # Fit an exponent to the data to get the point in which we get the maximum slope
+                t, N = remove_normalization_artifacts(t, N)
                 
                 # Calculate the expected OD value of a point based on the time it was messured
                 ODs_exponent_values = []
                 
+                # Fit an exponent to the data to get the point in which we get the maximum slope
                 # a - slope, b - intercept
                 a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
                 N0 = np.exp(b)
+                # Use the fitted exponent to find the matching ODs by time
                 for time in t:
                     ODs_exponent_values.append(exponential_phase(time, N0, a))
+
 
                 # Fit a polynomial to the data to get the point in which we get the maximum slope
                 coefficients = np.polyfit(experiment_data.times, experiment_data.ODs[key], 15)
@@ -237,7 +222,6 @@ def get_growth_parameters(data, err_log):
                 experiment_data.exponent_end[key] = (exponent_end_time, exponent_end_OD)
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
-                experiment_data.temp1[key] = times_after_lag_phase
                 experiment_data.exponent_ODs[key] = ODs_exponent_values
                 
             except Exception as e:
@@ -268,9 +252,34 @@ def exponential_phase(t, N0, slope):
     '''
     return N0 * np.exp(slope * t)
 
+def remove_normalization_artifacts(t, N):
+    '''
+    Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
+    ----------
+    t : [float]
+        The times of the experiment
+    N : [float]
+        OD at time t[i]
+    Returns
+    -------
+    (t, N)
+ 
+    Examples
+    --------  
+    >>> remove_normalization_artifacts(t, N)
+    '''
+    i = 0
+    zero_sub = 0.000001
+    while i < len(t):
+        if t[i] == 0:
+            t[i] = zero_sub
+        if N[i] <= 0:
+            N[i] = zero_sub
+        i += 1
 
+    return (t, N)
 
-def create_graphs(data, output_path, title, err_log, decimal_percision):
+def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -346,7 +355,11 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
                     # plot the point on the graph at which this occures
                     plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-                ax.plot(experiment_data.times[:60], experiment_data.exponent_ODs[key][:60])
+
+                if draw_exponential_phase:
+                    # Find the index in which the exponent croses the maximum of the original data
+                    stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 2
+                    ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index])
 
                 plt.legend(loc="lower right")
                 # Save the figure
