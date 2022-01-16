@@ -4,7 +4,6 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
 from experiment_data import ExperimentData
 
 def main():
@@ -239,7 +238,7 @@ def get_growth_parameters(data, err_log):
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
                 experiment_data.temp1[key] = times_after_lag_phase
-                experiment_data.temp2[key] = ODs_exponent_values
+                experiment_data.exponent_ODs[key] = ODs_exponent_values
                 
             except Exception as e:
                 print(str(e))
@@ -347,7 +346,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision):
                     # plot the point on the graph at which this occures
                     plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-                ax.plot(experiment_data.times[:60], experiment_data.temp2[key][:60])
+                ax.plot(experiment_data.times[:60], experiment_data.exponent_ODs[key][:60])
 
                 plt.legend(loc="lower right")
                 # Save the figure
