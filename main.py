@@ -1,5 +1,6 @@
 import os
 import math
+from pickle import GLOBAL
 import curveball
 import matplotlib
 import numpy as np
@@ -14,8 +15,14 @@ def main():
     input_directory = base_path + "/In"
     # The directory into which all the graphs will be saved
     output_directory = base_path + "/Out"
-    global zero_sub
-    zero_sub = 0.000001
+    
+    # Globals
+    global ZERO_SUB
+    ZERO_SUB = 0.000001
+
+    global LEFT_OFFSET
+    LEFT_OFFSET = 1
+
 
     # Matplotlib backend mode - a non-interactive backend that can only write to files
     matplotlib.use("Agg")
@@ -30,9 +37,9 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
-        # Test run    
-        parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"], [2,3,4,5,6,7,8,9,10,11])
+        # Test run
+        #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
         # Analysis of the data
         get_growth_parameters(parsed_data, err_log)
@@ -46,7 +53,7 @@ def main():
     finally:
         save_err_log(output_directory, "Error log", err_log)
 
-def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"]):
+def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"], data_columns=[1,2,3,4,5,6,7,8,9,10,11,12]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
@@ -109,18 +116,20 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
                         row_index = ord(row[1]) - 66
 
                         # This offset comes from the fact that in this expiremnt we don't right-most column and the index given by itertuples
-                        left_offset = 3
+                        LEFT_OFFSET = 1
+                        # Push all the values in the list with the needed change set by the LEFT_OFFSET
+                        data_columns_offset = [column_index + LEFT_OFFSET for column_index in data_columns]
                         # Collect all values from the columns to ODs
-                        for i in range(left_offset, 13):
+                        for i in data_columns_offset:
                             # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
-                            j = i - left_offset
+                            j = i - LEFT_OFFSET
                             curr_cell = (row_index, j)
                             if curr_cell not in parsed_data[-1].ODs:
                                 parsed_data[-1].ODs[curr_cell] = [row[i]]
                             # There is a previous reading for this cell, therefore normalize it against the first read then save it
                             else:
                                 if row[i] == "OVER":
-                                    raise ValueError('a measurement with the value of OVER is in cell ' + str(((row[1]), j + left_offset))  + ' at sheet: ' + sheet + ' please fix and try again')
+                                    raise ValueError('a measurement with the value of OVER is in cell ' + str(((row[1]), j + LEFT_OFFSET))  + ' at sheet: ' + sheet + ' please fix and try again')
                                 else:
                                     parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
     # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
@@ -148,7 +157,7 @@ def get_growth_parameters(data, err_log):
     '''
     tidy_df_list = create_tidy_dataframe_list(data)
 
-    # Use to retrive the needed data frame previosly created dataframe
+    # Use to retrive the needed data in the previosly created dataframe
     plate_num = 0
 
     # Loop all plates
@@ -199,19 +208,18 @@ def get_growth_parameters(data, err_log):
                         smallest_distance_index = i
                     i += 1
 
-                # make sure the miminal distance isn't zero by chance, if it is, set it to zero_sub
+                # make sure the miminal distance isn't zero by chance, if it is, set it to ZERO_SUB
                 if smallest_distance == 0:
-                    smallest_distance = zero_sub
+                    smallest_distance = ZERO_SUB
                 
                 # Find the first point at which at which the distance between the exponents and the actual data
                 # is grater by 95% or more than smallest_distance
                 i = 0
                 while i < len(experiment_data.times):
-                    if (math.dist((experiment_data.times[i], experiment_data.ODs[key][i]), (experiment_data.times[i], ODs_exponent_values[i])) * 0.05 >= smallest_distance
+                    if  (smallest_distance > distances[i] * (1/25000)
                         and i > smallest_distance_index):
                         exponent_end_time = experiment_data.times[i]
                         exponent_end_OD = experiment_data.ODs[key][i]
-                        break
                     i += 1
 
                 # Max slope calculation
@@ -272,9 +280,9 @@ def remove_normalization_artifacts(t, N):
     i = 0
     while i < len(t):
         if t[i] == 0:
-            t[i] = zero_sub
+            t[i] = ZERO_SUB
         if N[i] <= 0:
-            N[i] = zero_sub
+            N[i] = ZERO_SUB
         i += 1
 
     return (t, N)
@@ -301,6 +309,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
     --------   
     >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
     '''
+    
     # Styles
     point_size = 50
     alpha = 0.6
@@ -510,7 +519,7 @@ def convert_wellkey_to_text(key):
     --------   
     >>> convert_wellkey_to_text(key)
     '''
-    return chr(key[0] + 66) + str(key[1] + 3)
+    return chr(key[0] + 66) + str(key[1])
 
 def add_line_to_error_log(log, new_line):
     log.append(new_line)
