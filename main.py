@@ -37,7 +37,7 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"], [2,3,4,5,6,7,8,9,10,11])
+        parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
         # Test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
@@ -53,7 +53,7 @@ def main():
     finally:
         save_err_log(output_directory, "Error log", err_log)
 
-def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"], data_columns=[1,2,3,4,5,6,7,8,9,10,11,12]):
+def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
