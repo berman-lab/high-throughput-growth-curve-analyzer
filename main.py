@@ -6,6 +6,7 @@ import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sympy import true
 from experiment_data import ExperimentData
 
 def main():
@@ -39,6 +40,8 @@ def main():
         # Full run
         parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
         # Test run
+        #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        # Small test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
         # Analysis of the data
@@ -177,7 +180,31 @@ def get_growth_parameters(data, err_log):
                 # Get the maximal obsereved OD
                 max_population_density = max(experiment_data.ODs[key])
                 
-                # Finding the end of the exponential phase
+                # X percentile of growth as an indication of the end of the rapid growth phase
+                max_population_density_99 = max_population_density * 0.99
+                max_population_density_99_time = 0
+                
+                max_population_density_95 = max_population_density * 0.95
+                max_population_density_95_time = 0
+                
+                max_population_density_85 = max_population_density * 0.85
+                max_population_density_85_time = 0
+
+                # Find the first time at which the ovserved OD values exceeded the X percentile
+                i = 0
+                while i < len(experiment_data.ODs[key]):
+                    if experiment_data.ODs[key][i] > max_population_density_95 and max_population_density_95_time == 0:
+                        max_population_density_95_time = experiment_data.times[i]
+                    elif experiment_data.ODs[key][i] > max_population_density_99 and max_population_density_99_time == 0:
+                        max_population_density_99_time = experiment_data.times[i]
+                    i += 1
+                    
+                # prep for saving
+                exponet_end = {}
+                exponet_end[99] = (max_population_density_99_time, max_population_density_99)
+                exponet_end[95] = (max_population_density_95_time, max_population_density_95)
+
+                # Finding the end of the rapid growth phase
                 t = np.array(experiment_data.times)
                 N = np.array(experiment_data.ODs[key])
                 t, N = remove_normalization_artifacts(t, N)
@@ -192,43 +219,14 @@ def get_growth_parameters(data, err_log):
                 # Use the fitted exponent to find the matching ODs by time
                 for time in t:
                     ODs_exponent_values.append(exponential_phase(time, N0, a))
-
-
-                # Look for the point in which the distance has increased by at least 95 percent
-                # from the point with the smallest distance between the exponent and the actual data
-                i = 0
-                distances = []
-                smallest_distance = abs(ODs_exponent_values[0] - experiment_data.ODs[key][0])
-                smallest_distance_index = 0
-                while i < len(experiment_data.times):
-                    curr_distance = abs(ODs_exponent_values[i] - experiment_data.ODs[key][i])
-                    distances.append(curr_distance)
-                    if curr_distance < smallest_distance:
-                        smallest_distance = curr_distance
-                        smallest_distance_index = i
-                    i += 1
-
-                # make sure the miminal distance isn't zero by chance, if it is, set it to ZERO_SUB
-                if smallest_distance == 0:
-                    smallest_distance = ZERO_SUB
-                
-                # Find the first point at which at which the distance between the exponents and the actual data
-                # is grater by 95% or more than smallest_distance
-                i = 0
-                while i < len(experiment_data.times):
-                    if  (smallest_distance > distances[i] * (1/25000)
-                        and i > smallest_distance_index):
-                        exponent_end_time = experiment_data.times[i]
-                        exponent_end_OD = experiment_data.ODs[key][i]
-                    i += 1
-
+               
                 # Max slope calculation
                 # Get the time and OD of the point with the max slope
                 t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
 
                 # Save model estimations to fields in the object
                 experiment_data.exponent_begin[key] = (exponent_begin_time, exponent_begin_OD)
-                experiment_data.exponent_end[key] = (exponent_end_time, exponent_end_OD)
+                experiment_data.exponent_end[key] = exponet_end
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
                 experiment_data.exponent_ODs[key] = ODs_exponent_values
@@ -287,7 +285,7 @@ def remove_normalization_artifacts(t, N):
 
     return (t, N)
 
-def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False):
+def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_99=True, draw_95=True, draw_85=False):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -348,13 +346,21 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
 
                 # End of exponential phase
                 if key in experiment_data.exponent_end:
-                    exponent_end_time, exponent_end_OD = experiment_data.exponent_end[key]
-                    # Make sure none of them is "None"
-                    if exponent_end_time != None and exponent_end_OD != None:
+                    
+                    if draw_95 and 95 in experiment_data.exponent_end[key]:
+                        exponent_end_time, exponent_end_OD = experiment_data.exponent_end[key][95]
                         # Create and format the string for the label
                         end_of_exponent_str = str(round(exponent_end_time, decimal_percision)) + ' hours'
                         # plot the point with the label
-                        plt.scatter([exponent_end_time], [exponent_end_OD], c=["royalblue"], s=point_size ,alpha=alpha, label='end of the exponential phase: ' + end_of_exponent_str)
+                        plt.scatter([exponent_end_time], [exponent_end_OD], c=["darkgreen"], s=point_size ,alpha=alpha, label='95% of growth: ' + end_of_exponent_str)
+
+                    if draw_99 and 99 in experiment_data.exponent_end[key]:
+                        exponent_end_time, exponent_end_OD = experiment_data.exponent_end[key][99]
+                        # Create and format the string for the label
+                        end_of_exponent_str = str(round(exponent_end_time, decimal_percision)) + ' hours'
+                        # plot the point with the label
+                        plt.scatter([exponent_end_time], [exponent_end_OD], c=["royalblue"], s=point_size ,alpha=alpha, label='99% of growth: ' + end_of_exponent_str)
+                    
 
                 # Max population growth rate plotting
                 if key in experiment_data.max_population_gr:
@@ -368,7 +374,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                 if draw_exponential_phase:
                     # Find the index in which the exponent croses the maximum of the original data
                     # + 2 to keep drawing a little more after the exponent croses the max
-                    stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 2
+                    stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 1
                     ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index])
 
                 plt.legend(loc="lower right")
