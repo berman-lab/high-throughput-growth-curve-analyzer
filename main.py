@@ -1,6 +1,4 @@
 import os
-import math
-from pickle import GLOBAL
 import curveball
 import matplotlib
 import numpy as np
