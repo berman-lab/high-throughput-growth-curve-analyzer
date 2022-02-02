@@ -25,5 +25,5 @@ class ExperimentData:
     # maximal poplution density
     max_population_density : field(default_factory=dict)
 
-    # The ODs if exponential growth had kept going
+    # The ODs if rapid growth had kept going
     exponent_ODs: field(default_factory=dict)
