@@ -1,10 +1,10 @@
 import os
 import curveball
+import traceback
 import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sympy import true
 from experiment_data import ExperimentData
 
 def main():
@@ -24,6 +24,7 @@ def main():
 
 
     # Matplotlib backend mode - a non-interactive backend that can only write to files
+    # Before changing to this mode we had crashes on large runs
     matplotlib.use("Agg")
 
     # Stores all the error messages for logging
@@ -32,13 +33,13 @@ def main():
     decimal_percision_in_plots = 3
 
     # Tuple with the all the extensions all the data files
-    extensions = (".xlsx")
+    extensions = (".xlsx",)
     try:
         # Get the data from the files
         # Full run
-        parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
         # Test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        parsed_data = read_data(input_directory, extensions, err_log, ["E"])
         # Small test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
@@ -50,11 +51,17 @@ def main():
 
         df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory,err_log)
 
-        # Check if any of them came out as 'None'
-    finally:
+        df_raw_data.to_csv(output_directory + "/" + parsed_data[0].file_name + '_raw_data.csv', index=False, encoding='utf-8')
+        df_wells_summary.to_csv(output_directory + "/" + parsed_data[0].file_name + '_summary.csv', index=False, encoding='utf-8')
+
         save_err_log(output_directory, "Error log", err_log)
 
-def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
+    except Exception as e:
+        print(str(e))
+        add_line_to_error_log(err_log, str(e))
+        save_err_log(output_directory, "Error log", err_log)
+
+def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
@@ -78,7 +85,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
     >>> read_data("Root/Folder/where_we_want_to_read_data_from", ("xslx", "csv"), err_log, ["B", "C", "D" ,"E", "F", "G"])
     '''
 
-    # The container of the data after parsing but pre proccecing
+    # The container of the data
     parsed_data = []
 
     # retrive all the data files by extesions from the In directory
@@ -102,7 +109,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D
 
                 # run tourgh all the rows and columns and save the data into object for graphing later
                 # We use 96 well plates but only use the inner wells. That is, we treat the 96 well as a 60 well (6 X 10)
-                for _, row in enumerate(df.itertuples(), 1):
+                for row in df.itertuples():
                     # save the time of reading from the start of the experiment in seconds
                     if row[1] == "Time [s]":
                         parsed_data[-1].times.append(row[2] / 3600)
@@ -160,16 +167,21 @@ def get_growth_parameters(data, err_log):
 
     # Use to retrive the needed data in the previosly created dataframe
     plate_num = 0
+    models_trained = 1
+    models_to_train = len(data) * 60
 
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate and train model
         for row_index, column_index in experiment_data.ODs:
             try:
+                # Progress indicator
+                print()
+                print("Started training model: " + str(models_trained) + " out of: " + str(models_to_train))
                 key = (row_index, column_index)
                 
                 # Fit a function with a lag phase to the data
-                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False, PRINT=False)
+                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
                 
                 # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
                 exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
@@ -185,17 +197,12 @@ def get_growth_parameters(data, err_log):
                 max_population_density_95 = max_population_density * 0.95
                 max_population_density_95_time = 0
                 
-                max_population_density_85 = max_population_density * 0.85
-                max_population_density_85_time = 0
-
                 # Find the first time at which the ovserved OD values exceeded the X percentile
-                i = 0
-                while i < len(experiment_data.ODs[key]):
+                for i in range(len(experiment_data.ODs[key])):
                     if experiment_data.ODs[key][i] > max_population_density_95 and max_population_density_95_time == 0:
                         max_population_density_95_time = experiment_data.times[i]
                     elif experiment_data.ODs[key][i] > max_population_density_99 and max_population_density_99_time == 0:
                         max_population_density_99_time = experiment_data.times[i]
-                    i += 1
                     
                 # prep for saving
                 exponet_end = {}
@@ -228,6 +235,8 @@ def get_growth_parameters(data, err_log):
                 experiment_data.max_population_gr[key] = (t1, y1, max_slope)
                 experiment_data.max_population_density[key]= max_population_density
                 experiment_data.exponent_ODs[key] = ODs_exponent_values
+
+                models_trained += 1
                 
             except Exception as e:
                 print(str(e))
@@ -249,11 +258,7 @@ def exponential_phase(t, N0, slope):
         the time of the messurments in hours
     Returns
     -------
-    N0 * e^(slope * t)
- 
-    Examples
-    --------  
-    >>> exponential_phase(N0, slope, t)    
+    N0 * e^(slope * t) 
     '''
     return N0 * np.exp(slope * t)
 
@@ -268,22 +273,15 @@ def remove_normalization_artifacts(t, N):
     Returns
     -------
     (t, N)
- 
-    Examples
-    --------  
-    >>> remove_normalization_artifacts(t, N)
     '''
-    i = 0
-    while i < len(t):
+    for i in range(t):
         if t[i] == 0:
             t[i] = ZERO_SUB
         if N[i] <= 0:
             N[i] = ZERO_SUB
-        i += 1
-
     return (t, N)
 
-def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_99=True, draw_95=True, draw_85=False):
+def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_99=False, draw_95=True, draw_85=False):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -371,7 +369,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                 # Exponential growth rate graph
                 if draw_exponential_phase:
                     # Find the index in which the exponent croses the maximum of the original data
-                    # + 2 to keep drawing a little more after the exponent croses the max
+                    # + 1 to keep drawing a little more after the exponent croses the max
                     stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 1
                     ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index])
 
@@ -385,7 +383,6 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                 " failed with the following exception mesaage: " + str(e))
             finally:
                 plt.close('all')
-                continue
 
 def create_data_tables(experiment_data, output_path, err_log):
     '''Create tables from the data collected in previous steps.
@@ -429,49 +426,95 @@ def create_data_tables(experiment_data, output_path, err_log):
         ODs = []
         temperatures = []
 
-        # Columns for df_wells_summary
-        wells_summary_columns = [
-            'filename', 'plate, well', 'exponent_begin_time', 'exponent_begin_OD',
-            'exponent_end_time', 'exponent_end_OD', 'max_population_gr_time',
-            'max_population_gr_OD', 'max_population_gr_slope', 'max_population_density'
-        ]
-        # wells_summary lists
-         # filename will be set at the end since it will be the same for all rows
-        filename = []
-        wells_summary_plate_names = []
-        wells_summary_wells = []
-        exponent_begin_time = []
-        exponent_begin_OD = []
-        exponent_end_time = []
-        exponent_end_OD = []
-        max_population_gr_time = []
-        max_population_gr_OD = []
-        max_population_gr_slope = []
-        max_population_density = []
-
         # Copy the data to the needed format
         for experiment_data_point in experiment_data:
         # Loop all ODs within each plate
-            for row_index, column_index in experiment_data_point.ODs:
-                i = 0
-                key = (row_index, column_index)
+            for key in experiment_data_point.ODs:
                 key_as_well = convert_wellkey_to_text(key)
-                for OD in experiment_data_point.ODs[key]:
+                for i, OD in enumerate(experiment_data_point.ODs[key]):
                     raw_data_filename.append(experiment_data_point.file_name)
                     raw_data_plate_names.append(experiment_data_point.plate_name)
                     raw_data_wells.append(key_as_well)
                     times.append(experiment_data_point.times[i])
                     ODs.append(OD)
                     temperatures.append(experiment_data_point.temps[i])
-                    i += 1
                 
         df_raw_data = pd.DataFrame(data = {'filename': raw_data_filename, 'plate': raw_data_plate_names, 'well': raw_data_wells, 'time': times, 'OD': ODs, 'temperature': temperatures})
+        
+        # wells_summary lists
+        wells_summary_filename = []
+        wells_summary_plate_names = []
+        wells_summary_wells = []
+        exponent_begin_time = []
+        exponent_begin_OD = []
+        max_population_density = []
+        max_population_density_95_Time = []
+        max_population_density_99_Time = []
+        max_population_gr_time = []
+        max_population_gr_OD = []
+        max_population_gr_slope = []
+        
+
+        # Copy the data to the needed format
+        for experiment_data_point in experiment_data:
+        # Loop all ODs within each plate
+            for row_index, column_index in experiment_data_point.ODs:
+                try:
+                    key = (row_index, column_index)
+                    # Make sure all values are set before using the data
+                    #if 
+                    wells_summary_filename.append(experiment_data_point.file_name)
+                    wells_summary_plate_names.append(experiment_data_point.plate_name)
+                    
+                    key_as_well = convert_wellkey_to_text(key)
+                    wells_summary_wells.append(key_as_well)
+                    
+                    (end_of_Lag_time, end_of_Lag_OD) = experiment_data_point.exponent_begin[key]
+                    exponent_begin_time.append(end_of_Lag_time)
+                    exponent_begin_OD.append(end_of_Lag_OD)
+                    max_population_density.append(experiment_data_point.max_population_density[key])
+                    
+
+                    max_population_percentiles = experiment_data_point.exponent_end[key]
+                    
+                    max_population_95_Time = max_population_percentiles[95][0]
+                    max_population_density_95_Time.append(max_population_95_Time)
+
+                    max_population_99_Time = max_population_percentiles[99][0]
+                    max_population_density_99_Time.append(max_population_99_Time)
+                    
+                    (time, OD, slope) = experiment_data_point.max_population_gr[key]
+                    max_population_gr_time.append(time)
+                    max_population_gr_OD.append(OD)
+                    max_population_gr_slope.append(slope)
+                except Exception as e:
+                    print(str(e))
+                    add_line_to_error_log(err_log, "Data frame row " + convert_wellkey_to_text(key) + " at plate: " + experiment_data[0].plate_name + 
+                    " failed with the following exception mesaage: " + str(e))
+
+
+        df_wells_summary = pd.DataFrame(data = {
+                                                    'filename': wells_summary_filename,
+                                                    'plate': wells_summary_plate_names,
+                                                    'well': wells_summary_wells,
+                                                    'exponent_begin_time': exponent_begin_time,
+                                                    'exponent_begin_OD': exponent_begin_OD,
+                                                    'max_population_density': max_population_density,
+                                                    'Time_95%': max_population_density_95_Time,
+                                                    'Time_99%': max_population_density_99_Time,
+                                                    'max_population_gr_time': max_population_gr_time,
+                                                    'max_population_gr_OD': max_population_gr_OD,
+                                                    'max_population_gr_slope': max_population_gr_slope
+                                                }
+                                        )
+        
     except Exception as e:
                 print(str(e))
+                print(traceback.print_exc())
                 add_line_to_error_log(err_log, "Creation of data tables had an error at plate: " + experiment_data.plate_name + 
-                " it failed with the following exception mesaage: " + str(e))
-    finally:
-        return (df_raw_data, df_wells_summary)
+                " it failed with the following exception mesaage: " + traceback.print_exc())
+    
+    return (df_raw_data, df_wells_summary)
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
@@ -518,10 +561,6 @@ def convert_wellkey_to_text(key):
     Returns
     -------
     str
-
-    Examples
-    --------   
-    >>> convert_wellkey_to_text(key)
     '''
     return chr(key[0] + 66) + str(key[1])
 
