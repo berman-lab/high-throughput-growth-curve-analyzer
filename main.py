@@ -40,12 +40,12 @@ def main():
         # Full run
         #parsed_data = read_data(input_directory, extensions, err_log)
         # Test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        parsed_data = read_data(input_directory, extensions, err_log, ["E"])
         # Small test run
-        parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
         # Analysis of the data
-        get_growth_parameters(parsed_data, err_log)
+        fill_growth_parameters(parsed_data, err_log)
 
         # Graph the data and save the figures to the output_directory
         create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots, True)
@@ -67,7 +67,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
     
      Parameters
     ----------
-    input_directory : str
+    input_directory : path object
         The path to the folder where all the data we want to analyze is stored
     extensions : (str, str, ...)
         tuple with all the files with a given file extension we wish to include in the analysis
@@ -94,49 +94,54 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
         with pd.ExcelFile(excel_file_location) as excel_file:
             # Loop all the sheets in the file
             for sheet in excel_file.sheet_names:
-                # Get the name of the current file. The last part of the path then remove the file extension
-                curr_file_name = pathlib.Path(excel_file_location).stem
-                
-                # Create a new object to save data into
-                parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}))
-
-                # Load the current sheet of the excel file
-                df = pd.read_excel(excel_file, sheet)
-                
-
-                # run tourgh all the rows and columns and save the data into object for graphing later
-                # We use 96 well plates but only use the inner wells. That is, we treat the 96 well as a 60 well (6 X 10)
-                for row in df.itertuples():
-                    # save the time of reading from the start of the experiment in seconds
-                    if row[1] == "Time [s]":
-                        parsed_data[-1].times.append(row[2] / 3600)
-                    # save the temperature at the time of reading
-                    elif row[1] == "Temp. [°C]":
-                        parsed_data[-1].temps.append(row[2])
-                    # save the OD of the well
+                try:
+                    # Get the name of the current file. The last part of the path then remove the file extension
+                    curr_file_name = pathlib.Path(excel_file_location).stem
                     
-                    elif row[1] in data_rows:
-                        # Convert the character index to numaric index to be used to insert under the desired key in ODs
-                        # 66 is the ASCII value of B and afterwards all the values are sequencial
-                        row_index = ord(row[1]) - 66
+                    # Create a new object to save data into
+                    parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}))
 
-                        # This offset comes from the fact that in this expiremnt we don't right-most column and the index given by itertuples
-                        LEFT_OFFSET = 1
-                        # Push all the values in the list with the needed change set by the LEFT_OFFSET
-                        data_columns_offset = [column_index + LEFT_OFFSET for column_index in data_columns]
-                        # Collect all values from the columns to ODs
-                        for i in data_columns_offset:
-                            # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
-                            j = i - LEFT_OFFSET
-                            curr_cell = (row_index, j)
-                            if curr_cell not in parsed_data[-1].ODs:
-                                parsed_data[-1].ODs[curr_cell] = [row[i]]
-                            # There is a previous reading for this cell, therefore normalize it against the first read then save it
-                            else:
-                                if row[i] == "OVER":
-                                    raise ValueError(f'a measurement with the value of OVER is in cell {str(((row[1]), j + LEFT_OFFSET))} at sheet: {sheet} please fix and try again')
+                    # Load the current sheet of the excel file
+                    df = pd.read_excel(excel_file, sheet)
+                    
+
+                    # run tourgh all the rows and columns and save the data into object for graphing later
+                    # We use 96 well plates but only use the inner wells. That is, we treat the 96 well as a 60 well (6 X 10)
+                    for row in df.itertuples():
+                        # save the time of reading from the start of the experiment in seconds
+                        if row[1] == "Time [s]":
+                            parsed_data[-1].times.append(row[2] / 3600)
+                        # save the temperature at the time of reading
+                        elif row[1] == "Temp. [°C]":
+                            parsed_data[-1].temps.append(row[2])
+                        # save the OD of the well
+                        
+                        elif row[1] in data_rows:
+                            # Convert the character index to numaric index to be used to insert under the desired key in ODs
+                            # 66 is the ASCII value of B and afterwards all the values are sequencial
+                            row_index = ord(row[1]) - 66
+
+                            # This offset comes from the fact that in this expiremnt we don't right-most column and the index given by itertuples
+                            LEFT_OFFSET = 1
+                            # Push all the values in the list with the needed change set by the LEFT_OFFSET
+                            data_columns_offset = [column_index + LEFT_OFFSET for column_index in data_columns]
+                            # Collect all values from the columns to ODs
+                            for i in data_columns_offset:
+                                # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
+                                j = i - LEFT_OFFSET
+                                curr_cell = (row_index, j)
+                                if curr_cell not in parsed_data[-1].ODs:
+                                    parsed_data[-1].ODs[curr_cell] = [row[i]]
+                                # There is a previous reading for this cell, therefore normalize it against the first read then save it
                                 else:
-                                    parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
+                                    if row[i] == "OVER":
+                                        raise ValueError(f'a measurement with the value of OVER is in cell {str(((row[1]), j + LEFT_OFFSET))} at sheet: {sheet} please fix and try again')
+                                    else:
+                                        parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
+                except Exception:
+                    print(traceback.print_exc())
+                    add_line_to_error_log(err_log,
+                    f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {traceback.print_exc()}")
     # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
     for experiment_data in parsed_data:
         for row_index, column_index in experiment_data.ODs:
@@ -145,7 +150,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
 
     return parsed_data
 
-def get_growth_parameters(data, err_log):
+def fill_growth_parameters(data, err_log):
     '''
     Train a model and fill fields in the ExperimentData list given
     Parameters
