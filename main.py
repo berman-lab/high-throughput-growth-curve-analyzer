@@ -1,4 +1,5 @@
 import os
+import pathlib
 import curveball
 import traceback
 import matplotlib
@@ -9,11 +10,11 @@ from experiment_data import ExperimentData
 
 def main():
     # Base config and program parametrs
-    base_path = "C:/Data/bio-graphs"
+    base_path = os.path.normcase("c:\Data\\bio-graphs")
     # Input directory
-    input_directory = base_path + "/In"
+    input_directory = os.path.join(base_path, "In")
     # The directory into which all the graphs will be saved
-    output_directory = base_path + "/Out"
+    output_directory = os.path.join(base_path, "Out")
     
     # Globals
     global ZERO_SUB
@@ -37,11 +38,11 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        parsed_data = read_data(input_directory, extensions, err_log)
+        #parsed_data = read_data(input_directory, extensions, err_log)
         # Test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
         # Small test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
+        parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
         # Analysis of the data
         get_growth_parameters(parsed_data, err_log)
@@ -51,8 +52,8 @@ def main():
 
         df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory,err_log)
 
-        df_raw_data.to_csv(output_directory + "/" + parsed_data[0].file_name + '_raw_data.csv', index=False, encoding='utf-8')
-        df_wells_summary.to_csv(output_directory + "/" + parsed_data[0].file_name + '_summary.csv', index=False, encoding='utf-8')
+        df_raw_data.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
+        df_wells_summary.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -94,9 +95,9 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
             # Loop all the sheets in the file
             for sheet in excel_file.sheet_names:
                 # Get the name of the current file. The last part of the path then remove the file extension
-                curr_file_name = excel_file_location.split('/')[-1].split(".")[0]
-                # Create a new object to save data into
+                curr_file_name = pathlib.Path(excel_file_location).stem
                 
+                # Create a new object to save data into
                 parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}))
 
                 # Load the current sheet of the excel file
@@ -233,11 +234,10 @@ def get_growth_parameters(data, err_log):
 
                 models_trained += 1
                 
-            except Exception as e:
-                trace = traceback.print_exc()
-                print(trace)
+            except Exception:
+                print(traceback.print_exc())
                 add_line_to_error_log(err_log,
-                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {trace}")
+                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {traceback.print_exc()}")
     
         plate_num += 1
     
@@ -361,11 +361,11 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                     # Find the index in which the exponent croses the maximum of the original data
                     # + 1 to keep drawing a little more after the exponent croses the max
                     stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 1
-                    ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index])
+                    ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index], alpha=alpha-0.2)
 
-                fig.legend(loc="lower right")
+                ax.legend(loc="lower right")
                 # Save the figure
-                fig.savefig(output_path + "/well " + convert_wellkey_to_text(key) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
+                fig.savefig(os.path.join(output_path, f"well {convert_wellkey_to_text(key)} from {experiment_data.plate_name} in {experiment_data.file_name}"))
                 
             except Exception:
                 print(traceback.print_exc())
@@ -503,7 +503,11 @@ def create_data_tables(experiment_data, output_path, err_log):
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
-    return [ path + "/" + file_name for file_name in list(filter(lambda file: file.endswith(extension) , os.listdir(path))) ]
+    files = []
+    for file in os.listdir(path):
+        if file.endswith(extension):
+            files.append(os.path.join(path ,file))
+    return files
 
 def create_tidy_dataframe_list(data):
     '''Creates a tidy complient pandas dataset that will later by analyzed by curveball.
