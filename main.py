@@ -5,6 +5,7 @@ import traceback
 import matplotlib
 import numpy as np
 import pandas as pd
+from well_data import WellData
 import matplotlib.pyplot as plt
 from experiment_data import ExperimentData
 
@@ -38,9 +39,9 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        #parsed_data = read_data(input_directory, extensions, err_log)
+        parsed_data = read_data(input_directory, extensions, err_log)
         # Test run
-        parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
         # Small test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
@@ -50,7 +51,7 @@ def main():
         # Graph the data and save the figures to the output_directory
         create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots, True)
 
-        df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory,err_log)
+        df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory, err_log)
 
         df_raw_data.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
         df_wells_summary.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
@@ -99,7 +100,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
                     curr_file_name = pathlib.Path(excel_file_location).stem
                     
                     # Create a new object to save data into
-                    parsed_data.append(ExperimentData({}, [], [], sheet, curr_file_name, {}, {}, {}, {}, {}))
+                    parsed_data.append(ExperimentData([], [], sheet, curr_file_name, {}))
 
                     # Load the current sheet of the excel file
                     df = pd.read_excel(excel_file, sheet)
@@ -129,23 +130,23 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
                             for i in data_columns_offset:
                                 # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
                                 j = i - LEFT_OFFSET
-                                curr_cell = (row_index, j)
-                                if curr_cell not in parsed_data[-1].ODs:
-                                    parsed_data[-1].ODs[curr_cell] = [row[i]]
+                                curr_well = (row_index, j)
+                                if curr_well not in parsed_data[-1].wells:
+                                    parsed_data[-1].wells[curr_well] = WellData(False, [row[i]], (), (), (), 0, [])
                                 # There is a previous reading for this cell, therefore normalize it against the first read then save it
                                 else:
                                     if row[i] == "OVER":
                                         raise ValueError(f'a measurement with the value of OVER is in cell {str(((row[1]), j + LEFT_OFFSET))} at sheet: {sheet} please fix and try again')
                                     else:
-                                        parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
+                                        parsed_data[-1].wells[curr_well].ODs.append(row[i] - parsed_data[-1].wells[curr_well].ODs[0])
                 except Exception:
                     print(traceback.print_exc())
                     add_line_to_error_log(err_log,
                     f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {traceback.print_exc()}")
     # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
     for experiment_data in parsed_data:
-        for row_index, column_index in experiment_data.ODs:
-            experiment_data.ODs[(row_index, column_index)][0] = 0          
+        for row_index, column_index in experiment_data.wells:
+            experiment_data.wells[(row_index, column_index)].ODs[0] = 0          
 
 
     return parsed_data
@@ -175,21 +176,24 @@ def fill_growth_parameters(data, err_log):
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate and train model
-        for key in experiment_data.ODs:
+        for key in experiment_data.wells:
             try:
                 # Progress indicator
                 print()
                 print(f"Started training model: {str(models_trained)} out of: {str(models_to_train)}")
                 
+                # keep the refrence to the current well for reuse
+                curr_well = experiment_data.wells[key]
+
                 # Fit a function with a lag phase to the data
                 current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
                 
                 # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
                 exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
-                exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, experiment_data.ODs[key])
+                exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, curr_well.ODs)
 
                 # Get the maximal obsereved OD
-                max_population_density = max(experiment_data.ODs[key])
+                max_population_density = max(curr_well.ODs)
                 
                 # X percentile of growth as an indication of the end of the rapid growth phase
                 max_population_density_99 = max_population_density * 0.99
@@ -199,10 +203,10 @@ def fill_growth_parameters(data, err_log):
                 max_population_density_95_time = 0
                 
                 # Find the first time at which the ovserved OD values exceeded the X percentile
-                for i in range(len(experiment_data.ODs[key])):
-                    if experiment_data.ODs[key][i] > max_population_density_95 and max_population_density_95_time == 0:
+                for i in range(len(curr_well.ODs)):
+                    if curr_well.ODs[i] > max_population_density_95 and max_population_density_95_time == 0:
                         max_population_density_95_time = experiment_data.times[i]
-                    elif experiment_data.ODs[key][i] > max_population_density_99 and max_population_density_99_time == 0:
+                    elif curr_well.ODs[i] > max_population_density_99 and max_population_density_99_time == 0:
                         max_population_density_99_time = experiment_data.times[i]
                     
                 # prep for saving
@@ -212,7 +216,7 @@ def fill_growth_parameters(data, err_log):
 
                 # Finding the end of the rapid growth phase
                 t = np.array(experiment_data.times)
-                N = np.array(experiment_data.ODs[key])
+                N = np.array(curr_well.ODs)
                 t, N = remove_normalization_artifacts(t, N)
                 
                 # Calculate the expected OD value of a point based on the time it was messured
@@ -231,11 +235,13 @@ def fill_growth_parameters(data, err_log):
                 t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
 
                 # Save model estimations to fields in the object
-                experiment_data.exponent_begin[key] = (exponent_begin_time, exponent_begin_OD)
-                experiment_data.exponent_end[key] = exponet_end
-                experiment_data.max_population_gr[key] = (t1, y1, max_slope)
-                experiment_data.max_population_density[key]= max_population_density
-                experiment_data.exponent_ODs[key] = ODs_exponent_values
+                curr_well.exponent_begin = (exponent_begin_time, exponent_begin_OD)
+                curr_well.max_population_gr = (t1, y1, max_slope)
+                curr_well.exponent_end = exponet_end
+                curr_well.max_population_density= max_population_density
+                curr_well.exponent_ODs = ODs_exponent_values
+
+                curr_well.is_valid = True
 
                 models_trained += 1
                 
@@ -312,7 +318,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate
-        for key in experiment_data.ODs:
+        for key in experiment_data.wells:
             
             try:
                 # Setup axis and the figure objects
@@ -322,51 +328,48 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                 ax.set_ylabel('OD600')
 
                 # Plot the main graph
-                ax.plot(experiment_data.times, experiment_data.ODs[key])
+                ax.plot(experiment_data.times, experiment_data.wells[key].ODs)
 
-                # If there is a value in a parameter than graph it, otherwise leave it out
-
-                # Max OD plotting
-                if key in experiment_data.max_population_density:
-                    max_OD = experiment_data.max_population_density[key]
+                # If the well is valid graph it with the data from the fitting procedure, otherwise only graph time vs OD as an aid for seeing what went wrong
+                curr_well = experiment_data.wells[key]
+                if curr_well.is_valid:
+                    # Max OD plotting
+                    max_OD = experiment_data.wells[key].max_population_density
                     ax.axhline(y=max_OD, color='black', linestyle=':', label=f'maximum OD600: {str(round(max_OD, decimal_percision))}')
 
-                # End of lag phase plotting
-                if key in experiment_data.exponent_begin:
-                    exponent_begin_time, exponent_begin_OD = experiment_data.exponent_begin[key]
+                    # End of lag phase plotting
+                    exponent_begin_time, exponent_begin_OD = experiment_data.wells[key].exponent_begin
                     # plot the point with the label
                     ax.scatter([exponent_begin_time], [exponent_begin_OD], s=point_size ,alpha=alpha, 
                                 label= f'end of leg phase: {str(round(exponent_begin_time, decimal_percision))} hours')
 
-                # End of exponential phase
-                if key in experiment_data.exponent_end:
-                    if draw_95 and 95 in experiment_data.exponent_end[key]:
-                        time_95, OD_95 = experiment_data.exponent_end[key][95]
+                    # End of exponential phase
+                    if draw_95:
+                        time_95, OD_95 = experiment_data.wells[key].exponent_end[95]
                         # plot the point with the label
                         ax.scatter([time_95], [OD_95], c=["darkgreen"], s=point_size ,alpha=alpha,
                                     label=f'95% of growth: {str(round(time_95, decimal_percision))} hours')
 
-                    if draw_99 and 99 in experiment_data.exponent_end[key]:
-                        time_99, OD_99 = experiment_data.exponent_end[key][99]
+                    if draw_99:
+                        time_99, OD_99 = experiment_data.wells[key].exponent_end[99]
                         # plot the point with the label
                         ax.scatter([time_99], [OD_99], c=["royalblue"], s=point_size ,alpha=alpha,
-                                    label=f'99% of growth: {str(round(time_95, decimal_percision))} hours')
-                    
+                                    label=f'99% of growth: {str(round(time_99, decimal_percision))} hours')
+                        
 
-                # Max population growth rate plotting
-                if key in experiment_data.max_population_gr:
-                    x, y, slope = experiment_data.max_population_gr[key]
+                    # Max population growth rate plotting
+                    x, y, slope = experiment_data.wells[key].max_population_gr
                     # Plot the point and the linear function matching the max population growth rate
                     ax.axline((x, y), slope=slope, color='firebrick', linestyle=':', label=f'maximum population growth rate: {str(round(slope, decimal_percision))}')
                     # plot the point on the graph at which this occures
                     ax.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
-                # Exponential growth rate graph
-                if draw_exponential_phase:
-                    # Find the index in which the exponent croses the maximum of the original data
-                    # + 1 to keep drawing a little more after the exponent croses the max
-                    stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 1
-                    ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index], alpha=alpha-0.2)
+                    # Exponential growth rate graph
+                    if draw_exponential_phase:
+                        # Find the index in which the exponent croses the maximum of the original data
+                        # + 1 to keep drawing a little more after the exponent croses the max
+                        stop_index = np.searchsorted(experiment_data.wells[key].exponent_ODs, max_OD).T + 1
+                        ax.plot(experiment_data.times[:stop_index], experiment_data.wells[key].exponent_ODs[:stop_index], alpha=alpha-0.2)
 
                 ax.legend(loc="lower right")
                 # Save the figure
@@ -420,9 +423,9 @@ def create_data_tables(experiment_data, output_path, err_log):
         # Copy the data to the needed format
         for experiment_data_point in experiment_data:
         # Loop all ODs within each plate
-            for key in experiment_data_point.ODs:
+            for key in experiment_data_point.wells:
                 key_as_well = convert_wellkey_to_text(key)
-                for i, OD in enumerate(experiment_data_point.ODs[key]):
+                for i, OD in enumerate(experiment_data_point.wells[key].ODs):
                     raw_data_filename.append(experiment_data_point.file_name)
                     raw_data_plate_names.append(experiment_data_point.plate_name)
                     raw_data_wells.append(key_as_well)
@@ -449,35 +452,39 @@ def create_data_tables(experiment_data, output_path, err_log):
         # Copy the data to the needed format
         for experiment_data_point in experiment_data:
         # Loop all ODs within each plate
-            for row_index, column_index in experiment_data_point.ODs:
+            for key in experiment_data_point.wells:
                 try:
-                    key = (row_index, column_index)
-                    # Make sure all values are set before using the data
-                    #if 
-                    wells_summary_filename.append(experiment_data_point.file_name)
-                    wells_summary_plate_names.append(experiment_data_point.plate_name)
-                    
-                    key_as_well = convert_wellkey_to_text(key)
-                    wells_summary_wells.append(key_as_well)
-                    
-                    (end_of_Lag_time, end_of_Lag_OD) = experiment_data_point.exponent_begin[key]
-                    exponent_begin_time.append(end_of_Lag_time)
-                    exponent_begin_OD.append(end_of_Lag_OD)
-                    max_population_density.append(experiment_data_point.max_population_density[key])
-                    
+                    # Save for reuse
+                    curr_well = experiment_data_point.wells[key]
 
-                    max_population_percentiles = experiment_data_point.exponent_end[key]
-                    
-                    max_population_95_Time = max_population_percentiles[95][0]
-                    max_population_density_95_Time.append(max_population_95_Time)
+                    # if the well is invalid don't include it in the file
+                    if curr_well.is_valid:
+                        wells_summary_filename.append(experiment_data_point.file_name)
+                        wells_summary_plate_names.append(experiment_data_point.plate_name)
+                        
+                        key_as_well = convert_wellkey_to_text(key)
+                        wells_summary_wells.append(key_as_well)
+                        
+                        (end_of_Lag_time, end_of_Lag_OD) = curr_well.exponent_begin
+                        exponent_begin_time.append(end_of_Lag_time)
+                        exponent_begin_OD.append(end_of_Lag_OD)
+                        max_population_density.append(curr_well.max_population_density)
 
-                    max_population_99_Time = max_population_percentiles[99][0]
-                    max_population_density_99_Time.append(max_population_99_Time)
-                    
-                    (time, OD, slope) = experiment_data_point.max_population_gr[key]
-                    max_population_gr_time.append(time)
-                    max_population_gr_OD.append(OD)
-                    max_population_gr_slope.append(slope)
+                        max_population_percentiles = curr_well.exponent_end
+                        # 95% data
+                        max_population_95_Time = max_population_percentiles[95][0]
+                        max_population_density_95_Time.append(max_population_95_Time)
+                        # 99% data
+                        max_population_99_Time = max_population_percentiles[99][0]
+                        max_population_density_99_Time.append(max_population_99_Time)
+                        
+                        (time, OD, slope) = curr_well.max_population_gr
+                        max_population_gr_time.append(time)
+                        max_population_gr_OD.append(OD)
+                        max_population_gr_slope.append(slope)
+                    else:
+                        add_line_to_error_log(err_log,
+                        f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} is invalid invalid and was left out of the summary file")
                 except Exception:
                     print(traceback.print_exc())
                     add_line_to_error_log(err_log,
@@ -537,10 +544,10 @@ def create_tidy_dataframe_list(data):
     for experiment_data in data:
         # Create an empty dictionary to hold 
         result.append({})
-        for row_index, column_index in experiment_data.ODs:
+        for key in experiment_data.wells:
             # Create the dictionary that will be converted to the dataframe
-            d = {'Time': experiment_data.times, 'OD': experiment_data.ODs[(row_index, column_index)], 'Temp[°C]': experiment_data.temps}
-            result[-1][(row_index, column_index)] = pd.DataFrame(data=d)
+            d = {'Time': experiment_data.times, 'OD': experiment_data.wells[key].ODs, 'Temp[°C]': experiment_data.temps}
+            result[-1][key] = pd.DataFrame(data=d)
 
     return result
 
