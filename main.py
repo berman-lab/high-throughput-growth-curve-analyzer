@@ -24,7 +24,7 @@ def main():
 
 
     # Matplotlib backend mode - a non-interactive backend that can only write to files
-    # Before changing to this mode we had crashes on large runs
+    # Before changing to this mode the program would crash on large runs
     matplotlib.use("Agg")
 
     # Stores all the error messages for logging
@@ -37,9 +37,9 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["B", "C", "D" ,"E", "F", "G"])
+        parsed_data = read_data(input_directory, extensions, err_log)
         # Test run
-        parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
         # Small test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
         
@@ -56,9 +56,9 @@ def main():
 
         save_err_log(output_directory, "Error log", err_log)
 
-    except Exception as e:
-        print(str(e))
-        add_line_to_error_log(err_log, str(e))
+    except Exception:
+        print(traceback.print_exc())
+        add_line_to_error_log(err_log, traceback.print_exc())
         save_err_log(output_directory, "Error log", err_log)
 
 def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
@@ -79,10 +79,6 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
     Returns
     -------
     ExperimentData object
-
-    Examples
-    --------
-    >>> read_data("Root/Folder/where_we_want_to_read_data_from", ("xslx", "csv"), err_log, ["B", "C", "D" ,"E", "F", "G"])
     '''
 
     # The container of the data
@@ -137,7 +133,7 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
                             # There is a previous reading for this cell, therefore normalize it against the first read then save it
                             else:
                                 if row[i] == "OVER":
-                                    raise ValueError('a measurement with the value of OVER is in cell ' + str(((row[1]), j + LEFT_OFFSET))  + ' at sheet: ' + sheet + ' please fix and try again')
+                                    raise ValueError(f'a measurement with the value of OVER is in cell {str(((row[1]), j + LEFT_OFFSET))} at sheet: {sheet} please fix and try again')
                                 else:
                                     parsed_data[-1].ODs[curr_cell].append(row[i] - parsed_data[-1].ODs[curr_cell][0])
     # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
@@ -173,12 +169,11 @@ def get_growth_parameters(data, err_log):
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate and train model
-        for row_index, column_index in experiment_data.ODs:
+        for key in experiment_data.ODs:
             try:
                 # Progress indicator
                 print()
-                print("Started training model: " + str(models_trained) + " out of: " + str(models_to_train))
-                key = (row_index, column_index)
+                print(f"Started training model: {str(models_trained)} out of: {str(models_to_train)}")
                 
                 # Fit a function with a lag phase to the data
                 current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
@@ -239,9 +234,10 @@ def get_growth_parameters(data, err_log):
                 models_trained += 1
                 
             except Exception as e:
-                print(str(e))
-                add_line_to_error_log(err_log, "Fitting of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
-                 " failed with the following exception mesaage: " + str(e))
+                trace = traceback.print_exc()
+                print(trace)
+                add_line_to_error_log(err_log,
+                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {trace}")
     
         plate_num += 1
     
@@ -274,7 +270,7 @@ def remove_normalization_artifacts(t, N):
     -------
     (t, N)
     '''
-    for i in range(t):
+    for i in range(len(t)):
         if t[i] == 0:
             t[i] = ZERO_SUB
         if N[i] <= 0:
@@ -311,9 +307,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
     # Loop all plates
     for experiment_data in data:
         # Loop all ODs within each plate
-        for row_index, column_index in experiment_data.ODs:
-
-            key = (row_index, column_index)
+        for key in experiment_data.ODs:
             
             try:
                 # Setup axis and the figure objects
@@ -330,41 +324,37 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                 # Max OD plotting
                 if key in experiment_data.max_population_density:
                     max_OD = experiment_data.max_population_density[key]
-                    plt.axhline(y=max_OD, color='black', linestyle=':', label='maximum OD600: ' + str(round(max_OD, decimal_percision)))
+                    ax.axhline(y=max_OD, color='black', linestyle=':', label=f'maximum OD600: {str(round(max_OD, decimal_percision))}')
 
                 # End of lag phase plotting
                 if key in experiment_data.exponent_begin:
                     exponent_begin_time, exponent_begin_OD = experiment_data.exponent_begin[key]
-                    # Create and format the string for the label
-                    end_of_lag_str = str(round(exponent_begin_time, decimal_percision)) + ' hours'
                     # plot the point with the label
-                    plt.scatter([exponent_begin_time], [exponent_begin_OD], s=point_size ,alpha=alpha, label='end of leg phase: ' + end_of_lag_str)
+                    ax.scatter([exponent_begin_time], [exponent_begin_OD], s=point_size ,alpha=alpha, 
+                                label= f'end of leg phase: {str(round(exponent_begin_time, decimal_percision))} hours')
 
                 # End of exponential phase
                 if key in experiment_data.exponent_end:
-                    
                     if draw_95 and 95 in experiment_data.exponent_end[key]:
-                        exponent_end_time, exponent_end_OD = experiment_data.exponent_end[key][95]
-                        # Create and format the string for the label
-                        end_of_exponent_str = str(round(exponent_end_time, decimal_percision)) + ' hours'
+                        time_95, OD_95 = experiment_data.exponent_end[key][95]
                         # plot the point with the label
-                        plt.scatter([exponent_end_time], [exponent_end_OD], c=["darkgreen"], s=point_size ,alpha=alpha, label='95% of growth: ' + end_of_exponent_str)
+                        ax.scatter([time_95], [OD_95], c=["darkgreen"], s=point_size ,alpha=alpha,
+                                    label=f'95% of growth: {str(round(time_95, decimal_percision))} hours')
 
                     if draw_99 and 99 in experiment_data.exponent_end[key]:
-                        exponent_end_time, exponent_end_OD = experiment_data.exponent_end[key][99]
-                        # Create and format the string for the label
-                        end_of_exponent_str = str(round(exponent_end_time, decimal_percision)) + ' hours'
+                        time_99, OD_99 = experiment_data.exponent_end[key][99]
                         # plot the point with the label
-                        plt.scatter([exponent_end_time], [exponent_end_OD], c=["royalblue"], s=point_size ,alpha=alpha, label='99% of growth: ' + end_of_exponent_str)
+                        ax.scatter([time_99], [OD_99], c=["royalblue"], s=point_size ,alpha=alpha,
+                                    label=f'99% of growth: {str(round(time_95, decimal_percision))} hours')
                     
 
                 # Max population growth rate plotting
                 if key in experiment_data.max_population_gr:
                     x, y, slope = experiment_data.max_population_gr[key]
                     # Plot the point and the linear function matching the max population growth rate
-                    plt.axline((x, y), slope=slope, color='firebrick', linestyle=':', label='maximum population growth rate:' + str(round(slope, decimal_percision)))
+                    ax.axline((x, y), slope=slope, color='firebrick', linestyle=':', label=f'maximum population growth rate: {str(round(slope, decimal_percision))}')
                     # plot the point on the graph at which this occures
-                    plt.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
+                    ax.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
 
                 # Exponential growth rate graph
                 if draw_exponential_phase:
@@ -373,14 +363,14 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                     stop_index = np.searchsorted(experiment_data.exponent_ODs[key], max_OD).T + 1
                     ax.plot(experiment_data.times[:stop_index], experiment_data.exponent_ODs[key][:stop_index])
 
-                plt.legend(loc="lower right")
+                fig.legend(loc="lower right")
                 # Save the figure
-                plt.savefig(output_path + "/well " + convert_wellkey_to_text(key) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
+                fig.savefig(output_path + "/well " + convert_wellkey_to_text(key) + " from " + experiment_data.file_name + " " + experiment_data.plate_name)
                 
-            except Exception as e:
-                print(str(e))
-                add_line_to_error_log(err_log, "Graphing of cell " + convert_wellkey_to_text(key) + " at plate: " + experiment_data.plate_name + 
-                " failed with the following exception mesaage: " + str(e))
+            except Exception:
+                print(traceback.print_exc())
+                add_line_to_error_log(err_log,
+                f"Graphing of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {traceback.print_exc()}")
             finally:
                 plt.close('all')
 
@@ -405,11 +395,7 @@ def create_data_tables(experiment_data, output_path, err_log):
         a refernce to the list containing all the previosuly logged errors
     Returns
     -------
-    tuple in the structure of: (raw_data, wells_summary)
-
-    Examples
-    --------   
-    >>> create_summary_tables(parsed_data, "Root/Folder/where_we_want_files_to_be_saved_into")    
+    tuple in the structure of: (df_raw_data, df_wells_summary)    
     '''
     try:
         # datasets for the final result to be saved into
@@ -487,10 +473,10 @@ def create_data_tables(experiment_data, output_path, err_log):
                     max_population_gr_time.append(time)
                     max_population_gr_OD.append(OD)
                     max_population_gr_slope.append(slope)
-                except Exception as e:
-                    print(str(e))
-                    add_line_to_error_log(err_log, "Data frame row " + convert_wellkey_to_text(key) + " at plate: " + experiment_data[0].plate_name + 
-                    " failed with the following exception mesaage: " + str(e))
+                except Exception:
+                    print(traceback.print_exc())
+                    add_line_to_error_log(err_log,
+                    f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} failed with the following exception mesaage: {traceback.print_exc()}")
 
 
         df_wells_summary = pd.DataFrame(data = {
@@ -508,11 +494,10 @@ def create_data_tables(experiment_data, output_path, err_log):
                                                 }
                                         )
         
-    except Exception as e:
-                print(str(e))
+    except Exception:
                 print(traceback.print_exc())
-                add_line_to_error_log(err_log, "Creation of data tables had an error at plate: " + experiment_data.plate_name + 
-                " it failed with the following exception mesaage: " + traceback.print_exc())
+                add_line_to_error_log(err_log,
+                f"Creation of data tables had an error at plate: {experiment_data.plate_name} it failed with the following exception mesaage: {traceback.print_exc()}")
     
     return (df_raw_data, df_wells_summary)
 
