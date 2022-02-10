@@ -1,13 +1,13 @@
 import os
 import pathlib
 import curveball
-import traceback
 import matplotlib
 import numpy as np
 import pandas as pd
 from well_data import WellData
 import matplotlib.pyplot as plt
 from experiment_data import ExperimentData
+
 
 def main():
     # Base config and program parametrs
@@ -39,11 +39,12 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        parsed_data = read_data(input_directory, extensions, err_log)
+        #parsed_data = read_data(input_directory, extensions, err_log)
         # Test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["E"])
+        parsed_data = read_data(input_directory, extensions, err_log, ["B"])
         # Small test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["E"], [2])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7]) # plate 4
+        #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [2])
         
         # Analysis of the data
         fill_growth_parameters(parsed_data, err_log)
@@ -58,9 +59,9 @@ def main():
 
         save_err_log(output_directory, "Error log", err_log)
 
-    except Exception:
-        print(traceback.print_exc())
-        add_line_to_error_log(err_log, traceback.print_exc())
+    except Exception as e:
+        print(str(e))
+        add_line_to_error_log(err_log, str(e))
         save_err_log(output_directory, "Error log", err_log)
 
 def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
@@ -139,10 +140,10 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
                                         raise ValueError(f'a measurement with the value of OVER is in cell {str(((row[1]), j + LEFT_OFFSET))} at sheet: {sheet} please fix and try again')
                                     else:
                                         parsed_data[-1].wells[curr_well].ODs.append(row[i] - parsed_data[-1].wells[curr_well].ODs[0])
-                except Exception:
-                    print(traceback.print_exc())
+                except Exception as e:
+                    print(str(e))
                     add_line_to_error_log(err_log,
-                    f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {traceback.print_exc()}")
+                    f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {str(e)}")
     # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
     for experiment_data in parsed_data:
         for row_index, column_index in experiment_data.wells:
@@ -245,10 +246,10 @@ def fill_growth_parameters(data, err_log):
 
                 models_trained += 1
                 
-            except Exception:
-                print(traceback.print_exc())
+            except Exception as e:
+                print(str(e))
                 add_line_to_error_log(err_log,
-                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {traceback.print_exc()}")
+                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
     
         plate_num += 1
     
@@ -281,11 +282,14 @@ def remove_normalization_artifacts(t, N):
     -------
     (t, N)
     '''
+    # Find the index of the first non negative value in the N array
+    first_positive_index = np.searchsorted(N, ZERO_SUB).T
+
     for i in range(len(t)):
         if t[i] == 0:
             t[i] = ZERO_SUB
         if N[i] <= 0:
-            N[i] = ZERO_SUB
+            N[i] = N[first_positive_index]
     return (t, N)
 
 def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_99=False, draw_95=True, draw_85=False):
@@ -371,14 +375,15 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                         stop_index = np.searchsorted(experiment_data.wells[key].exponent_ODs, max_OD).T + 1
                         ax.plot(experiment_data.times[:stop_index], experiment_data.wells[key].exponent_ODs[:stop_index], alpha=alpha-0.2)
 
-                ax.legend(loc="lower right")
+                    ax.legend(loc="lower right")
+                
                 # Save the figure
                 fig.savefig(os.path.join(output_path, f"well {convert_wellkey_to_text(key)} from {experiment_data.plate_name} in {experiment_data.file_name}"))
                 
-            except Exception:
-                print(traceback.print_exc())
+            except Exception as e:
+                print(str(e))
                 add_line_to_error_log(err_log,
-                f"Graphing of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {traceback.print_exc()}")
+                f"Graphing of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
             finally:
                 plt.close('all')
 
@@ -485,10 +490,10 @@ def create_data_tables(experiment_data, output_path, err_log):
                     else:
                         add_line_to_error_log(err_log,
                         f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} is invalid invalid and was left out of the summary file")
-                except Exception:
-                    print(traceback.print_exc())
+                except Exception as e:
+                    print(str(e))
                     add_line_to_error_log(err_log,
-                    f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} failed with the following exception mesaage: {traceback.print_exc()}")
+                    f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} failed with the following exception mesaage: {str(e)}")
 
 
         df_wells_summary = pd.DataFrame(data = {
@@ -506,10 +511,10 @@ def create_data_tables(experiment_data, output_path, err_log):
                                                 }
                                         )
         
-    except Exception:
-                print(traceback.print_exc())
+    except Exception as e:
+                print(str(e))
                 add_line_to_error_log(err_log,
-                f"Creation of data tables had an error at plate: {experiment_data.plate_name} it failed with the following exception mesaage: {traceback.print_exc()}")
+                f"Creation of data tables had an error at plate: {experiment_data.plate_name} it failed with the following exception mesaage: {str(e)}")
     
     return (df_raw_data, df_wells_summary)
 
