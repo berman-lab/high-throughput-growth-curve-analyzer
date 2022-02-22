@@ -39,9 +39,9 @@ def main():
     try:
         # Get the data from the files
         # Full run
-        #parsed_data = read_data(input_directory, extensions, err_log)
+        parsed_data = read_data(input_directory, extensions, err_log)
         # Test run
-        parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
         # Small test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7])
         
