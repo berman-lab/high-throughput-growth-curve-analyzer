@@ -43,14 +43,13 @@ def main():
         # Test run
         parsed_data = read_data(input_directory, extensions, err_log, ["B"])
         # Small test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7]) # plate 4
-        #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [2])
+        #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7])
         
         # Analysis of the data
         fill_growth_parameters(parsed_data, err_log)
 
         # Graph the data and save the figures to the output_directory
-        create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots, True)
+        create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
 
         df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory, err_log)
 
