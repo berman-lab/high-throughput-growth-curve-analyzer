@@ -175,6 +175,10 @@ def fill_growth_parameters(data, err_log):
 
     # Loop all plates
     for experiment_data in data:
+
+        clearConsole()
+        print(f"Started training in {experiment_data.plate_name}")
+
         # Loop all ODs within each plate and train model
         for key in experiment_data.wells:
             try:
@@ -575,6 +579,12 @@ def add_line_to_error_log(log, new_line):
 def save_err_log(path, name, err_log):
     with open(path + "/" + name + ".txt", 'w') as file:
         file.writelines("% s\n" % line for line in err_log)
+
+def clearConsole():
+    command = 'clear'
+    if os.name in ('nt', 'dos'):  # If Machine is running on Windows, use cls
+        command = 'cls'
+    os.system(command)
 
 if __name__ == "__main__":
     main()
