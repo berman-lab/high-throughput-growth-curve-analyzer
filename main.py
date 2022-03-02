@@ -37,6 +37,7 @@ def main():
     # Tuple with the all the extensions all the data files
     extensions = (".xlsx",)
     try:
+        print("Importing the data from files")
         # Get the data from the files
         # Full run
         parsed_data = read_data(input_directory, extensions, err_log)
@@ -44,10 +45,11 @@ def main():
         #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
         # Small test run
         #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7])
-        
+           
         # Analysis of the data
         fill_growth_parameters(parsed_data, err_log)
 
+        print("Creating figures")
         # Graph the data and save the figures to the output_directory
         create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
 
