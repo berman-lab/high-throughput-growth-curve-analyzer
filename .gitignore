@@ -24,3 +24,4 @@ build/main/locket-0.2.1-py3.8.egg/EGG-INFO/zip-safe
 build/main/locket-0.2.1-py3.8.egg/locket/__init__.py
 build/main/locket-0.2.1-py3.8.egg/locket/__pycache__/__init__.cpython-38.pyc
 dist/main.exe
+__pycache__/operating_mode.cpython-38.pyc
