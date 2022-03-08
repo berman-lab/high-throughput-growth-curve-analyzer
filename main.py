@@ -1,4 +1,5 @@
 import os
+import scipy
 import pathlib
 import curveball
 import matplotlib
@@ -6,7 +7,12 @@ import numpy as np
 import pandas as pd
 from well_data import WellData
 import matplotlib.pyplot as plt
+from operating_mode import operating_modes
+from gooey import Gooey, GooeyParser
 from experiment_data import ExperimentData
+
+# Gooey config
+@Gooey(program_name="Bio graphs")
 
 
 def main():
@@ -35,28 +41,42 @@ def main():
     decimal_percision_in_plots = 3
 
     # Tuple with the all the extensions all the data files
-    extensions = (".xlsx",)
+    extensions_tecan = (".xlsx",)
+    extensions_csv = (".csv",)
     try:
-        print("Importing the data from files")
-        # Get the data from the files
-        # Full run
-        parsed_data = read_data(input_directory, extensions, err_log)
-        # Test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
-        # Small test run
-        #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7])
-           
-        # Analysis of the data
-        fill_growth_parameters(parsed_data, err_log)
+        # User input - will later be replaced with gui
+        # Asking the user to choose an operating mode
+        print("Please choose an operating mode:")
+        print(*get_operationg_modes_for_display(), sep = "\n")
+        print("\nPlease type the number you chose here:")
+        mode_num = int(input())
 
-        print("Creating figures")
-        # Graph the data and save the figures to the output_directory
-        create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
+        # Tecan formated files
+        if(mode_num == 1):
+            print("Importing the data from files")
+            # Get the data from the files
+            # Full run
+            parsed_data = read_tecan_stacker_data(input_directory, extensions_tecan, err_log)
+            # Test run
+            #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+            # Small test run
+            #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7])
+            
+            # Analysis of the data
+            fill_growth_parameters(parsed_data, err_log)
 
-        df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory, err_log)
+            print("Creating figures")
+            # Graph the data and save the figures to the output_directory
+            create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
 
-        df_raw_data.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
-        df_wells_summary.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
+            df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory, err_log)
+
+            df_raw_data.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
+            df_wells_summary.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
+        
+        # csv data from previous runs
+        elif (mode_num == 2):
+            parsed_data = read_csv_raw_data(input_directory, extensions_csv, err_log)
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -65,7 +85,7 @@ def main():
         add_line_to_error_log(err_log, str(e))
         save_err_log(output_directory, "Error log", err_log)
 
-def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
+def read_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
@@ -153,6 +173,11 @@ def read_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E
 
     return parsed_data
 
+def read_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
+    excel_files_paths = get_files_from_directory(input_directory, extensions)
+    return ""
+
+
 def fill_growth_parameters(data, err_log):
     '''
     Train a model and fill fields in the ExperimentData list given
@@ -178,7 +203,7 @@ def fill_growth_parameters(data, err_log):
     # Loop all plates
     for experiment_data in data:
 
-        clearConsole()
+        clear_console()
         print(f"Started training in {experiment_data.plate_name}")
 
         # Loop all ODs within each plate and train model
@@ -582,11 +607,18 @@ def save_err_log(path, name, err_log):
     with open(path + "/" + name + ".txt", 'w') as file:
         file.writelines("% s\n" % line for line in err_log)
 
-def clearConsole():
+def clear_console():
     command = 'clear'
     if os.name in ('nt', 'dos'):  # If Machine is running on Windows, use cls
         command = 'cls'
     os.system(command)
+
+def get_operationg_modes_for_display():
+    out = []
+    for k, v in operating_modes.items():
+        out.append(f"{k}. {v}")
+    return out
+
 
 if __name__ == "__main__":
     main()
