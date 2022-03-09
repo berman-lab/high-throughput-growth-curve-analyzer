@@ -49,14 +49,14 @@ def main():
         print("Please choose an operating mode:")
         print(*get_operationg_modes_for_display(), sep = "\n")
         print("\nPlease type the number you chose here:")
-        mode_num = int(input())
+        mode_num = 2 #int(input())
 
         # Tecan formated files
         if(mode_num == 1):
             print("Importing the data from files")
             # Get the data from the files
             # Full run
-            parsed_data = read_tecan_stacker_data(input_directory, extensions_tecan, err_log)
+            parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
             # Test run
             #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
             # Small test run
@@ -76,7 +76,7 @@ def main():
         
         # csv data from previous runs
         elif (mode_num == 2):
-            parsed_data = read_csv_raw_data(input_directory, extensions_csv, err_log)
+            parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -85,7 +85,7 @@ def main():
         add_line_to_error_log(err_log, str(e))
         save_err_log(output_directory, "Error log", err_log)
 
-def read_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
+def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
@@ -173,9 +173,71 @@ def read_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B"
 
     return parsed_data
 
-def read_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
-    excel_files_paths = get_files_from_directory(input_directory, extensions)
-    return ""
+def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
+    '''Read the data from the previously exported csv with the given extension in the input directory given
+    
+     Parameters
+    ----------
+    input_directory : path object
+        The path to the folder where all the data we want to analyze is stored
+    extensions : (str, str, ...)
+        tuple with all the files with a given file extension we wish to include in the analysis
+    err_log : [str]
+        a refernce to the list containing all the previosuly logged errors
+    data_rows:
+        A list of all the names of the rows to be analysed, defaults to A to H as in a normal 96 well plate
+  
+
+    Returns
+    -------
+    ExperimentData object
+    '''
+    # The container of the data as expremint_data objects
+    parsed_data = []
+
+    csvs_input_paths = get_files_from_directory(input_directory, extensions)
+    # Get all csv files with 'raw_data' in their name
+    csv_raw_data_paths = list(filter(lambda file_name: 'raw_data' in file_name, csvs_input_paths))
+    csv_summary_paths = list(filter(lambda file_name: 'summary' in file_name, csvs_input_paths))
+    
+    # go through the csvs and move the data into parsed_data
+    for csv_file_location in csv_raw_data_paths:
+        # Take the excel_file_location and use it to initiate an ExcelFile object as the context
+        current_csv = pd.read_csv(csv_file_location)
+        
+        # Save all plate names
+        plate_names = pd.unique(current_csv['plate'])
+        curr_file_name = current_csv.iat[0,0]
+        
+        for plate in plate_names:
+            curr_plate_raw_data = current_csv.loc[current_csv['plate'] == plate]
+
+            # All wells in the same plate have the same times and temperatures, therefore get the data with the first well the user specified
+            curr_plate_first_well_df = curr_plate_raw_data.loc[curr_plate_raw_data['well'] == f'{data_rows[0]}{data_columns[0]}']
+            plate_measurements_times = list(curr_plate_first_well_df['time'])
+            plate_temps = list(curr_plate_first_well_df['temperature'])
+
+            parsed_data.append(ExperimentData(plate_measurements_times, plate_temps, plate, curr_file_name, {}))
+
+            for row in data_rows:
+                for col in data_columns:
+                    curr_well = (convert_letter_to_wellkey(row), col)
+
+                    # Check the validity of the well by checking if there is a summary row for it in the summary file
+                    # if there isn't one add to a list to also skip the other same wells from other replicates
+                    #parsed_data[-1].wells[curr_well] = WellData(True, [row[i]], (), (), (), 0, [])
+                    
+        
+        
+
+        plate_names = list(current_csv.groupby(['plate']))
+
+
+        
+
+            
+
+    return parsed_data
 
 
 def fill_growth_parameters(data, err_log):
@@ -585,6 +647,9 @@ def create_tidy_dataframe_list(data):
             result[-1][key] = pd.DataFrame(data=d)
 
     return result
+
+def convert_letter_to_wellkey(letter):
+    return ord(letter) - 66
 
 def convert_wellkey_to_text(key):
     '''Converts a tuple of type (int,int) back to the appropriate human readable index 
