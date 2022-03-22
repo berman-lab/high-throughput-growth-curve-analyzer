@@ -5,6 +5,7 @@ import curveball
 import matplotlib
 import numpy as np
 import pandas as pd
+from sympy import appellf1
 from well_data import WellData
 import matplotlib.pyplot as plt
 from operating_mode import operating_modes
@@ -199,9 +200,16 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
     # Get all csv files with 'raw_data' in their name
     csv_raw_data_paths = list(filter(lambda file_name: 'raw_data' in file_name, csvs_input_paths))
     csv_summary_paths = list(filter(lambda file_name: 'summary' in file_name, csvs_input_paths))
-    
+
+    # Load all summary csvs
+    summary_csvs = []
+    for csv_summary_path in csv_summary_paths:
+        summary_csvs.append(pd.read_csv(csv_summary_path))
+
+    invalid_wells = []
+
     # go through the csvs and move the data into parsed_data
-    for csv_file_location in csv_raw_data_paths:
+    for i, csv_file_location in enumerate(csv_raw_data_paths):
         # Take the excel_file_location and use it to initiate an ExcelFile object as the context
         current_csv = pd.read_csv(csv_file_location)
         
@@ -222,10 +230,20 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
             for row in data_rows:
                 for col in data_columns:
                     curr_well = (convert_letter_to_wellkey(row), col)
+                    well_key_as_text = row + str(col)
 
                     # Check the validity of the well by checking if there is a summary row for it in the summary file
                     # if there isn't one add to a list to also skip the other same wells from other replicates
-                    #parsed_data[-1].wells[curr_well] = WellData(True, [row[i]], (), (), (), 0, [])
+                    well_summary_data = summary_csvs[i].loc[(summary_csvs[i]['well'] == well_key_as_text) & (summary_csvs[i]['plate'] == plate)]
+                    if well_summary_data.empty:
+                        invalid_wells.append(well_key_as_text)
+                        add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
+                    else:
+                        # Prep the well data to add to the ExperimentData object
+                        well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) & (curr_plate_raw_data['plate'] == plate)]
+                        ODs = list(well_raw_data['OD']) 
+                        
+                        parsed_data[-1].wells[curr_well] = WellData(True, ODs, (), (), (), 0, [])
                     
         
         
