@@ -50,7 +50,7 @@ def main():
         print("Please choose an operating mode:")
         print(*get_operationg_modes_for_display(), sep = "\n")
         print("\nPlease type the number you chose here:")
-        mode_num = 2 #int(input())
+        mode_num = int(input())
 
         # Tecan formated files
         if(mode_num == 1):
@@ -59,9 +59,9 @@ def main():
             # Full run
             parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
             # Test run
-            #parsed_data = read_data(input_directory, extensions, err_log, ["B"])
+            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"])
             # Small test run
-            #parsed_data = read_data(input_directory, extensions, err_log, ["B"], [7])
+            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"], [7])
             
             # Analysis of the data
             fill_growth_parameters(parsed_data, err_log)
@@ -78,6 +78,7 @@ def main():
         # csv data from previous runs
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
+            
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -232,28 +233,25 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
                     curr_well = (convert_letter_to_wellkey(row), col)
                     well_key_as_text = row + str(col)
 
-                    # Check the validity of the well by checking if there is a summary row for it in the summary file
-                    # if there isn't one add to a list to also skip the other same wells from other replicates
-                    well_summary_data = summary_csvs[i].loc[(summary_csvs[i]['well'] == well_key_as_text) & (summary_csvs[i]['plate'] == plate)]
-                    if well_summary_data.empty:
-                        invalid_wells.append(well_key_as_text)
+                    # if the well has a invalid sisiter well in a diffrent replicate
+                    if well_key_as_text in invalid_wells:
                         add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
                     else:
-                        # Prep the well data to add to the ExperimentData object
-                        well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) & (curr_plate_raw_data['plate'] == plate)]
-                        ODs = list(well_raw_data['OD']) 
-                        
-                        parsed_data[-1].wells[curr_well] = WellData(True, ODs, (), (), (), 0, [])
-                    
-        
-        
-
-        plate_names = list(current_csv.groupby(['plate']))
-
-
-        
-
-            
+                        # Check the validity of the well by checking if there is a summary row for it in the summary file
+                        # if there isn't one add to a list to also skip the other same wells from other replicates
+                        well_summary_data = summary_csvs[i].loc[(summary_csvs[i]['well'] == well_key_as_text) & (summary_csvs[i]['plate'] == plate)]
+                        if well_summary_data.empty:
+                            invalid_wells.append(well_key_as_text)
+                            add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
+                        else:
+                            # Prep the well data to add to the ExperimentData object
+                            well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) & (curr_plate_raw_data['plate'] == plate)]
+                            ODs = list(well_raw_data['OD'])
+                            exponent_begin = (well_summary_data["exponent_begin_time"], well_summary_data["exponent_begin_OD"])
+                            max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
+                            exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
+                            max_population_density = well_summary_data["max_population_density"]
+                            parsed_data[-1].wells[curr_well] = WellData(True, ODs, exponent_begin, max_population_gr, exponent_end, max_population_density, [])  
 
     return parsed_data
 
@@ -306,24 +304,13 @@ def fill_growth_parameters(data, err_log):
                 # Get the maximal obsereved OD
                 max_population_density = max(curr_well.ODs)
                 
-                # X percentile of growth as an indication of the end of the rapid growth phase
-                max_population_density_99 = max_population_density * 0.99
-                max_population_density_99_time = 0
-                
+                # 95% of growth as an indication of the end of the rapid growth phase
                 max_population_density_95 = max_population_density * 0.95
-                max_population_density_95_time = 0
+                # Find the first time at which the ovserved OD values exceeded 95%
+                max_population_density_95_time = experiment_data.times[np.searchsorted(curr_well.ODs, max_population_density_95).T]
                 
-                # Find the first time at which the ovserved OD values exceeded the X percentile
-                for i in range(len(curr_well.ODs)):
-                    if curr_well.ODs[i] > max_population_density_95 and max_population_density_95_time == 0:
-                        max_population_density_95_time = experiment_data.times[i]
-                    elif curr_well.ODs[i] > max_population_density_99 and max_population_density_99_time == 0:
-                        max_population_density_99_time = experiment_data.times[i]
-                    
                 # prep for saving
-                exponet_end = {}
-                exponet_end[99] = (max_population_density_99_time, max_population_density_99)
-                exponet_end[95] = (max_population_density_95_time, max_population_density_95)
+                exponet_end = (max_population_density_95_time, max_population_density_95)
 
                 # Finding the end of the rapid growth phase
                 t = np.array(experiment_data.times)
@@ -459,17 +446,10 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
 
                     # End of exponential phase
                     if draw_95:
-                        time_95, OD_95 = experiment_data.wells[key].exponent_end[95]
+                        time_95, OD_95 = experiment_data.wells[key].exponent_end
                         # plot the point with the label
                         ax.scatter([time_95], [OD_95], c=["darkgreen"], s=point_size ,alpha=alpha,
-                                    label=f'95% of growth: {str(round(time_95, decimal_percision))} hours')
-
-                    if draw_99:
-                        time_99, OD_99 = experiment_data.wells[key].exponent_end[99]
-                        # plot the point with the label
-                        ax.scatter([time_99], [OD_99], c=["royalblue"], s=point_size ,alpha=alpha,
-                                    label=f'99% of growth: {str(round(time_99, decimal_percision))} hours')
-                        
+                                    label=f'95% of growth: {str(round(time_95, decimal_percision))} hours')                        
 
                     # Max population growth rate plotting
                     x, y, slope = experiment_data.wells[key].max_population_gr
@@ -558,7 +538,7 @@ def create_data_tables(experiment_data, output_path, err_log):
         exponent_begin_OD = []
         max_population_density = []
         max_population_density_95_Time = []
-        max_population_density_99_Time = []
+        max_population_95_ODs = []
         max_population_gr_time = []
         max_population_gr_OD = []
         max_population_gr_slope = []
@@ -585,14 +565,10 @@ def create_data_tables(experiment_data, output_path, err_log):
                         exponent_begin_OD.append(end_of_Lag_OD)
                         max_population_density.append(curr_well.max_population_density)
 
-                        max_population_percentiles = curr_well.exponent_end
-                        # 95% data
-                        max_population_95_Time = max_population_percentiles[95][0]
+                        max_population_95_Time, max_population_95_OD = curr_well.exponent_end
                         max_population_density_95_Time.append(max_population_95_Time)
-                        # 99% data
-                        max_population_99_Time = max_population_percentiles[99][0]
-                        max_population_density_99_Time.append(max_population_99_Time)
-                        
+                        max_population_95_ODs.append(max_population_95_OD)
+
                         (time, OD, slope) = curr_well.max_population_gr
                         max_population_gr_time.append(time)
                         max_population_gr_OD.append(OD)
@@ -613,8 +589,8 @@ def create_data_tables(experiment_data, output_path, err_log):
                                                     'exponent_begin_time': exponent_begin_time,
                                                     'exponent_begin_OD': exponent_begin_OD,
                                                     'max_population_density': max_population_density,
-                                                    'Time_95%': max_population_density_95_Time,
-                                                    'Time_99%': max_population_density_99_Time,
+                                                    'Time_95%(exp_end)': max_population_density_95_Time,
+                                                    'OD_95%': max_population_95_ODs, 
                                                     'max_population_gr_time': max_population_gr_time,
                                                     'max_population_gr_OD': max_population_gr_OD,
                                                     'max_population_gr_slope': max_population_gr_slope
