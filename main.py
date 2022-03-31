@@ -5,7 +5,6 @@ import curveball
 import matplotlib
 import numpy as np
 import pandas as pd
-from sympy import appellf1
 from well_data import WellData
 import matplotlib.pyplot as plt
 from operating_mode import operating_modes
@@ -50,7 +49,7 @@ def main():
         print("Please choose an operating mode:")
         print(*get_operationg_modes_for_display(), sep = "\n")
         print("\nPlease type the number you chose here:")
-        mode_num = int(input())
+        mode_num = 2#int(input())
 
         # Tecan formated files
         if(mode_num == 1):
@@ -78,6 +77,7 @@ def main():
         # csv data from previous runs
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
+            avg_data = get_reps_average(parsed_data, err_log)
             
 
         save_err_log(output_directory, "Error log", err_log)
@@ -87,6 +87,7 @@ def main():
         add_line_to_error_log(err_log, str(e))
         save_err_log(output_directory, "Error log", err_log)
 
+#IO
 def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read all the data from the files with the given extension in the input directory given
     
@@ -194,9 +195,11 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
     -------
     ExperimentData object
     '''
-    # The container of the data as expremint_data objects
+    # list of the data as expremint_data objects
     parsed_data = []
-
+    # Save all the data from a replicate into
+    rep_data = []
+    
     csvs_input_paths = get_files_from_directory(input_directory, extensions)
     # Get all csv files with 'raw_data' in their name
     csv_raw_data_paths = list(filter(lambda file_name: 'raw_data' in file_name, csvs_input_paths))
@@ -211,13 +214,15 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
 
     # go through the csvs and move the data into parsed_data
     for i, csv_file_location in enumerate(csv_raw_data_paths):
+        rep_data = []
+
         # Take the excel_file_location and use it to initiate an ExcelFile object as the context
         current_csv = pd.read_csv(csv_file_location)
         
         # Save all plate names
         plate_names = pd.unique(current_csv['plate'])
         curr_file_name = current_csv.iat[0,0]
-        
+
         for plate in plate_names:
             curr_plate_raw_data = current_csv.loc[current_csv['plate'] == plate]
 
@@ -226,7 +231,7 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
             plate_measurements_times = list(curr_plate_first_well_df['time'])
             plate_temps = list(curr_plate_first_well_df['temperature'])
 
-            parsed_data.append(ExperimentData(plate_measurements_times, plate_temps, plate, curr_file_name, {}))
+            plate_data = ExperimentData(plate_measurements_times, plate_temps, plate, curr_file_name, {})
 
             for row in data_rows:
                 for col in data_columns:
@@ -239,7 +244,7 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
                     else:
                         # Check the validity of the well by checking if there is a summary row for it in the summary file
                         # if there isn't one add to a list to also skip the other same wells from other replicates
-                        well_summary_data = summary_csvs[i].loc[(summary_csvs[i]['well'] == well_key_as_text) & (summary_csvs[i]['plate'] == plate)]
+                        well_summary_data = summary_csvs[i].loc[(summary_csvs[i]['well'] == well_key_as_text) & (summary_csvs[i]['plate'] == plate)].squeeze()
                         if well_summary_data.empty:
                             invalid_wells.append(well_key_as_text)
                             add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
@@ -251,145 +256,14 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
                             max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
                             exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
                             max_population_density = well_summary_data["max_population_density"]
-                            parsed_data[-1].wells[curr_well] = WellData(True, ODs, exponent_begin, max_population_gr, exponent_end, max_population_density, [])  
+                            plate_data.wells[curr_well] = WellData(True, ODs, exponent_begin, max_population_gr, exponent_end, max_population_density, [])
+            rep_data.append(plate_data)
+            
+        parsed_data.append(rep_data)
 
     return parsed_data
 
-
-def fill_growth_parameters(data, err_log):
-    '''
-    Train a model and fill fields in the ExperimentData list given
-    Parameters
-    ----------
-    data : ExperimentData object
-        All the data from the expriment
-    Returns
-    -------
-    null
-
-    Examples
-    --------   
-    >>> get_growth_parameters(parsed_data, err_log)    
-    '''
-    tidy_df_list = create_tidy_dataframe_list(data)
-
-    # Use to retrive the needed data in the previosly created dataframe
-    plate_num = 0
-    models_trained = 1
-    models_to_train = len(data) * 60
-
-    # Loop all plates
-    for experiment_data in data:
-
-        clear_console()
-        print(f"Started training in {experiment_data.plate_name}")
-
-        # Loop all ODs within each plate and train model
-        for key in experiment_data.wells:
-            try:
-                # Progress indicator
-                print()
-                print(f"Started training model: {str(models_trained)} out of: {str(models_to_train)}")
-                
-                # keep the refrence to the current well for reuse
-                curr_well = experiment_data.wells[key]
-
-                # Fit a function with a lag phase to the data
-                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
-                
-                # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
-                exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
-                exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, curr_well.ODs)
-
-                # Get the maximal obsereved OD
-                max_population_density = max(curr_well.ODs)
-                
-                # 95% of growth as an indication of the end of the rapid growth phase
-                max_population_density_95 = max_population_density * 0.95
-                # Find the first time at which the ovserved OD values exceeded 95%
-                max_population_density_95_time = experiment_data.times[np.searchsorted(curr_well.ODs, max_population_density_95).T]
-                
-                # prep for saving
-                exponet_end = (max_population_density_95_time, max_population_density_95)
-
-                # Finding the end of the rapid growth phase
-                t = np.array(experiment_data.times)
-                N = np.array(curr_well.ODs)
-                t, N = remove_normalization_artifacts(t, N)
-                
-                # Calculate the expected OD value of a point based on the time it was messured
-                ODs_exponent_values = []
-                
-                # Fit an exponent to the data to get the point in which we get the maximum slope
-                # a - slope, b - intercept
-                a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
-                N0 = np.exp(b)
-                # Use the fitted exponent to find the matching ODs by time
-                for time in t:
-                    ODs_exponent_values.append(exponential_phase(time, N0, a))
-               
-                # Max slope calculation
-                # Get the time and OD of the point with the max slope
-                t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
-
-                # Save model estimations to fields in the object
-                curr_well.exponent_begin = (exponent_begin_time, exponent_begin_OD)
-                curr_well.max_population_gr = (t1, y1, max_slope)
-                curr_well.exponent_end = exponet_end
-                curr_well.max_population_density= max_population_density
-                curr_well.exponent_ODs = ODs_exponent_values
-
-                curr_well.is_valid = True
-
-                models_trained += 1
-                
-            except Exception as e:
-                print(str(e))
-                add_line_to_error_log(err_log,
-                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
-    
-        plate_num += 1
-    
-def exponential_phase(t, N0, slope):
-    '''
-    Calculate the value of a point with N0 * e^(slope * t)
-    Parameters
-    ----------
-    N0 : float
-        The first OD messured for the well after the end of the lag phase
-    slope : float
-        the slope of the the power of the exponenet
-    t: float
-        the time of the messurments in hours
-    Returns
-    -------
-    N0 * e^(slope * t) 
-    '''
-    return N0 * np.exp(slope * t)
-
-def remove_normalization_artifacts(t, N):
-    '''
-    Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
-    ----------
-    t : [float]
-        The times of the experiment
-    N : [float]
-        OD at time t[i]
-    Returns
-    -------
-    (t, N)
-    '''
-    # Find the index of the first non negative value in the N array
-    first_positive_index = np.searchsorted(N, ZERO_SUB).T
-
-    for i in range(len(t)):
-        if t[i] == 0:
-            t[i] = ZERO_SUB
-        if N[i] <= 0:
-            N[i] = N[first_positive_index]
-    return (t, N)
-
-def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_99=False, draw_95=True, draw_85=False):
+def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_95=True):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -603,6 +477,161 @@ def create_data_tables(experiment_data, output_path, err_log):
                 f"Creation of data tables had an error at plate: {experiment_data.plate_name} it failed with the following exception mesaage: {str(e)}")
     
     return (df_raw_data, df_wells_summary)
+
+#Fitting
+def fill_growth_parameters(data, err_log):
+    '''
+    Train a model and fill fields in the ExperimentData list given
+    Parameters
+    ----------
+    data : ExperimentData object
+        All the data from the expriment
+    Returns
+    -------
+    null
+
+    Examples
+    --------   
+    >>> get_growth_parameters(parsed_data, err_log)    
+    '''
+    tidy_df_list = create_tidy_dataframe_list(data)
+
+    # Use to retrive the needed data in the previosly created dataframe
+    plate_num = 0
+    models_trained = 1
+    models_to_train = len(data) * 60
+
+    # Loop all plates
+    for experiment_data in data:
+
+        clear_console()
+        print(f"Started training in {experiment_data.plate_name}")
+
+        # Loop all ODs within each plate and train model
+        for key in experiment_data.wells:
+            try:
+                # Progress indicator
+                print()
+                print(f"Started training model: {str(models_trained)} out of: {str(models_to_train)}")
+                
+                # keep the refrence to the current well for reuse
+                curr_well = experiment_data.wells[key]
+
+                # Fit a function with a lag phase to the data
+                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
+                
+                # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
+                exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
+                exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, curr_well.ODs)
+
+                # Get the maximal obsereved OD
+                max_population_density = max(curr_well.ODs)
+                
+                # 95% of growth as an indication of the end of the rapid growth phase
+                max_population_density_95 = max_population_density * 0.95
+                # Find the first time at which the ovserved OD values exceeded 95%
+                max_population_density_95_time = experiment_data.times[np.searchsorted(curr_well.ODs, max_population_density_95).T]
+                
+                # prep for saving
+                exponet_end = (max_population_density_95_time, max_population_density_95)
+
+                # Finding the end of the rapid growth phase
+                t = np.array(experiment_data.times)
+                N = np.array(curr_well.ODs)
+                t, N = remove_normalization_artifacts(t, N)
+                
+                # Calculate the expected OD value of a point based on the time it was messured
+                ODs_exponent_values = []
+                
+                # Fit an exponent to the data to get the point in which we get the maximum slope
+                # a - slope, b - intercept
+                a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
+                N0 = np.exp(b)
+                # Use the fitted exponent to find the matching ODs by time
+                for time in t:
+                    ODs_exponent_values.append(exponential_phase(time, N0, a))
+               
+                # Max slope calculation
+                # Get the time and OD of the point with the max slope
+                t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
+
+                # Save model estimations to fields in the object
+                curr_well.exponent_begin = (exponent_begin_time, exponent_begin_OD)
+                curr_well.max_population_gr = (t1, y1, max_slope)
+                curr_well.exponent_end = exponet_end
+                curr_well.max_population_density= max_population_density
+                curr_well.exponent_ODs = ODs_exponent_values
+
+                curr_well.is_valid = True
+
+                models_trained += 1
+                
+            except Exception as e:
+                print(str(e))
+                add_line_to_error_log(err_log,
+                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
+    
+        plate_num += 1
+
+def get_reps_average(reps_data, err_log):
+    '''Analyze well replicates of a well
+    
+     Parameters
+    ----------
+    reps_data : [ExperimentData]
+    
+    err_log : [str]
+        a refernce to the list containing all the previosuly logged errors
+
+    Returns
+    -------
+    ExperimentData object
+    '''
+    
+
+    averaged_data = ExperimentData(reps_data[0][0].times, reps_data[0][0].temps, "", reps_data[0][0].file_name, {})
+    return averaged_data
+
+
+#Utils
+def exponential_phase(t, N0, slope):
+    '''
+    Calculate the value of a point with N0 * e^(slope * t)
+    Parameters
+    ----------
+    N0 : float
+        The first OD messured for the well after the end of the lag phase
+    slope : float
+        the slope of the the power of the exponenet
+    t: float
+        the time of the messurments in hours
+    Returns
+    -------
+    N0 * e^(slope * t) 
+    '''
+    return N0 * np.exp(slope * t)
+
+def remove_normalization_artifacts(t, N):
+    '''
+    Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
+    ----------
+    t : [float]
+        The times of the experiment
+    N : [float]
+        OD at time t[i]
+    Returns
+    -------
+    (t, N)
+    '''
+    # Find the index of the first non negative value in the N array
+    first_positive_index = np.searchsorted(N, ZERO_SUB).T
+
+    for i in range(len(t)):
+        if t[i] == 0:
+            t[i] = ZERO_SUB
+        if N[i] <= 0:
+            N[i] = N[first_positive_index]
+    return (t, N)
 
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
