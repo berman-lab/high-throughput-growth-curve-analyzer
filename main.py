@@ -1,18 +1,15 @@
 import os
-import scipy
 import pathlib
 import curveball
+import itertools
 import matplotlib
 import numpy as np
 import pandas as pd
+from scipy import signal
 from well_data import WellData
 import matplotlib.pyplot as plt
 from operating_mode import operating_modes
-from gooey import Gooey, GooeyParser
 from experiment_data import ExperimentData
-
-# Gooey config
-@Gooey(program_name="Bio graphs")
 
 
 def main():
@@ -260,6 +257,27 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
             rep_data.append(plate_data)
             
         parsed_data.append(rep_data)
+
+    # Check that all replicates have the same amount of plates
+    if not all(len(rep_data) == len(parsed_data[0]) for rep_data in parsed_data):
+        raise ValueError(f'Not all replicates have the same amount of plates in them')
+    
+    # Trim all lists to the same length
+    # Find the min ODs length for the well in all replicates and all the lists should conform to this value
+    key = list(parsed_data[0][0].wells)[0]
+    min_ODs_len = len(parsed_data[0][0].wells[key].ODs)    
+    for i in range(0, len(parsed_data)):
+        tmp_len = len(parsed_data[i][0].wells[key].ODs)
+        if tmp_len < min_ODs_len:
+            min_ODs_len = tmp_len
+    
+    # Use the value to trim all the lists to the same length
+    for replicate_data in parsed_data:
+        for plate in replicate_data:
+            plate.times = plate.times[:min_ODs_len]
+            plate.temps = plate.temps[:min_ODs_len]
+            for key in plate.wells:
+                plate.wells[key].ODs = plate.wells[key].ODs[:min_ODs_len]
 
     return parsed_data
 
@@ -574,7 +592,7 @@ def fill_growth_parameters(data, err_log):
         plate_num += 1
 
 def get_reps_average(reps_data, err_log):
-    '''Analyze well replicates of a well
+    '''avarage out plate replicates of a well
     
      Parameters
     ----------
@@ -587,6 +605,24 @@ def get_reps_average(reps_data, err_log):
     -------
     ExperimentData object
     '''
+
+    # Generate the indexes for the pairwise CC test
+    indexes = itertools.combinations(range(1, len(reps_data) + 1), 2)
+
+    # Check if the reps are close enough to one another to average
+    # Run a cross-correlation test pair-wise
+    for i1, i2 in indexes:
+        for j in range(0, len(reps_data[0])):
+            for key in reps_data[0][0].wells:
+                t1 = reps_data[i1][j].times
+                ODs1 = reps_data[i1][j].wells[key].ODs
+                
+                t2 = reps_data[i2][j].times
+                ODs2 = reps_data[i2][j].wells[key].ODs
+
+                correlation_res = signal.correlate([t1, ODs1], [t2, ODs2])
+                print(correlation_res)
+
     
 
     averaged_data = ExperimentData(reps_data[0][0].times, reps_data[0][0].temps, "", reps_data[0][0].file_name, {})
