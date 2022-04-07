@@ -25,3 +25,6 @@ build/main/locket-0.2.1-py3.8.egg/locket/__init__.py
 build/main/locket-0.2.1-py3.8.egg/locket/__pycache__/__init__.cpython-38.pyc
 dist/main.exe
 __pycache__/operating_mode.cpython-38.pyc
+__pycache__/experiment_data.cpython-310.pyc
+__pycache__/operating_mode.cpython-310.pyc
+__pycache__/well_data.cpython-310.pyc
