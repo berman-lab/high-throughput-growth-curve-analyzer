@@ -28,6 +28,9 @@ def main():
     LEFT_OFFSET = 1
 
 
+    global UPPER_PLATE_LIMIT
+    UPPER_PLATE_LIMIT = 20
+
     # Matplotlib backend mode - a non-interactive backend that can only write to files
     # Before changing to this mode the program would crash on large runs
     matplotlib.use("Agg")
@@ -202,23 +205,31 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
     csv_raw_data_paths = list(filter(lambda file_name: 'raw_data' in file_name, csvs_input_paths))
     csv_summary_paths = list(filter(lambda file_name: 'summary' in file_name, csvs_input_paths))
 
-    # Load all summary csvs
+    # Load all summary csvs into one data frame
     summary_csvs = []
     for csv_summary_path in csv_summary_paths:
         summary_csvs.append(pd.read_csv(csv_summary_path))
 
-    invalid_wells = []
+    summary_csvs = pd.concat(summary_csvs, ignore_index=True, sort=False)   
+    # Save all plate names
+    plate_names = pd.unique(summary_csvs['plate'])
+    file_names = pd.unique(summary_csvs['filename'])
+
+    #Check if there are too many plates, i.e not the same names between replicates
+    if len(plate_names) > UPPER_PLATE_LIMIT:
+        add_line_to_error_log(err_log, 'Too many plates in summary_csvs')
+        raise ValueError(f'Too many plates in summary_csvs')
+
+    # Check if there are too many filenames inside the dataframe
+    if len(file_names) > len(csv_file_location):
+        add_line_to_error_log(err_log, 'Too many file names in summary_csvs')
+        raise ValueError(f'Too many file names in summary_csvs')
 
     # go through the csvs and move the data into parsed_data
     for i, csv_file_location in enumerate(csv_raw_data_paths):
         rep_data = []
 
-        # Take the excel_file_location and use it to initiate an ExcelFile object as the context
         current_csv = pd.read_csv(csv_file_location)
-        
-        # Save all plate names
-        plate_names = pd.unique(current_csv['plate'])
-        curr_file_name = current_csv.iat[0,0]
 
         for plate in plate_names:
             curr_plate_raw_data = current_csv.loc[current_csv['plate'] == plate]
@@ -228,32 +239,26 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
             plate_measurements_times = list(curr_plate_first_well_df['time'])
             plate_temps = list(curr_plate_first_well_df['temperature'])
 
-            plate_data = ExperimentData(plate_measurements_times, plate_temps, plate, curr_file_name, {})
+            plate_data = ExperimentData(plate_measurements_times, plate_temps, plate, file_names[i], {})
 
             for row in data_rows:
                 for col in data_columns:
                     curr_well = (convert_letter_to_wellkey(row), col)
                     well_key_as_text = row + str(col)
 
-                    # if the well has a invalid sisiter well in a diffrent replicate
-                    if well_key_as_text in invalid_wells:
+                    # if any well from the replicates was invalid, that is there is an invalid well from the same plate
+                    if summary_csvs.loc[(summary_csvs['well'] == well_key_as_text) & (summary_csvs['plate'] == plate) & (summary_csvs['valid'] == 'False')].empty == False:
                         add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
                     else:
-                        # Check the validity of the well by checking if there is a summary row for it in the summary file
-                        # if there isn't one add to a list to also skip the other same wells from other replicates
-                        well_summary_data = summary_csvs[i].loc[(summary_csvs[i]['well'] == well_key_as_text) & (summary_csvs[i]['plate'] == plate)].squeeze()
-                        if well_summary_data.empty:
-                            invalid_wells.append(well_key_as_text)
-                            add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
-                        else:
-                            # Prep the well data to add to the ExperimentData object
-                            well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) & (curr_plate_raw_data['plate'] == plate)]
-                            ODs = list(well_raw_data['OD'])
-                            exponent_begin = (well_summary_data["exponent_begin_time"], well_summary_data["exponent_begin_OD"])
-                            max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
-                            exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
-                            max_population_density = well_summary_data["max_population_density"]
-                            plate_data.wells[curr_well] = WellData(True, ODs, exponent_begin, max_population_gr, exponent_end, max_population_density, [])
+                        well_summary_data = summary_csvs.loc[(summary_csvs['well'] == well_key_as_text) & (summary_csvs['plate'] == plate) & (summary_csvs['filename'] == file_names[i])].squeeze()
+                        # Prep the well data to add to the ExperimentData object
+                        well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) & (curr_plate_raw_data['plate'] == plate) & (summary_csvs['filename'] == file_names[i])]
+                        ODs = list(well_raw_data['OD'])
+                        exponent_begin = (well_summary_data["exponent_begin_time"], well_summary_data["exponent_begin_OD"])
+                        max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
+                        exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
+                        max_population_density = well_summary_data["max_population_density"]
+                        plate_data.wells[curr_well] = WellData(True, ODs, exponent_begin, max_population_gr, exponent_end, max_population_density, [])
             rep_data.append(plate_data)
             
         parsed_data.append(rep_data)
@@ -424,6 +429,7 @@ def create_data_tables(experiment_data, output_path, err_log):
         
         # wells_summary lists
         wells_summary_filename = []
+        wells_summary_validity = []
         wells_summary_plate_names = []
         wells_summary_wells = []
         exponent_begin_time = []
@@ -444,14 +450,14 @@ def create_data_tables(experiment_data, output_path, err_log):
                     # Save for reuse
                     curr_well = experiment_data_point.wells[key]
 
-                    # if the well is invalid don't include it in the file
+                    wells_summary_filename.append(experiment_data_point.file_name)
+                    wells_summary_validity.append(curr_well.is_valid)
+                    wells_summary_plate_names.append(experiment_data_point.plate_name)
+                    
+                    key_as_well = convert_wellkey_to_text(key)
+                    wells_summary_wells.append(key_as_well)
+
                     if curr_well.is_valid:
-                        wells_summary_filename.append(experiment_data_point.file_name)
-                        wells_summary_plate_names.append(experiment_data_point.plate_name)
-                        
-                        key_as_well = convert_wellkey_to_text(key)
-                        wells_summary_wells.append(key_as_well)
-                        
                         (end_of_Lag_time, end_of_Lag_OD) = curr_well.exponent_begin
                         exponent_begin_time.append(end_of_Lag_time)
                         exponent_begin_OD.append(end_of_Lag_OD)
@@ -466,8 +472,16 @@ def create_data_tables(experiment_data, output_path, err_log):
                         max_population_gr_OD.append(OD)
                         max_population_gr_slope.append(slope)
                     else:
-                        add_line_to_error_log(err_log,
-                        f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} is invalid invalid and was left out of the summary file")
+                        exponent_begin_time.append(-1)
+                        exponent_begin_OD.append(-1)
+                        max_population_density.append(-1)
+                        max_population_density_95_Time.append(-1)
+                        max_population_95_ODs.append(-1)
+                        max_population_gr_time.append(-1)
+                        max_population_gr_OD.append(-1)
+                        max_population_gr_slope.append(-1)
+
+
                 except Exception as e:
                     print(str(e))
                     add_line_to_error_log(err_log,
@@ -476,6 +490,7 @@ def create_data_tables(experiment_data, output_path, err_log):
 
         df_wells_summary = pd.DataFrame(data = {
                                                     'filename': wells_summary_filename,
+                                                    'valid': wells_summary_validity,
                                                     'plate': wells_summary_plate_names,
                                                     'well': wells_summary_wells,
                                                     'exponent_begin_time': exponent_begin_time,
@@ -613,7 +628,7 @@ def get_reps_average(reps_data, err_log):
     # Run a cross-correlation test pair-wise
     for i1, i2 in indexes:
         for j in range(0, len(reps_data[0])):
-            for key in reps_data[0][0].wells:
+            for key in reps_data[i1][j].wells:
                 t1 = reps_data[i1][j].times
                 ODs1 = reps_data[i1][j].wells[key].ODs
                 
@@ -621,7 +636,7 @@ def get_reps_average(reps_data, err_log):
                 ODs2 = reps_data[i2][j].wells[key].ODs
 
                 correlation_res = signal.correlate([t1, ODs1], [t2, ODs2])
-                print(correlation_res)
+                
 
     
 
