@@ -27,10 +27,6 @@ def main():
     global LEFT_OFFSET
     LEFT_OFFSET = 1
 
-
-    global UPPER_PLATE_LIMIT
-    UPPER_PLATE_LIMIT = 20
-
     # Matplotlib backend mode - a non-interactive backend that can only write to files
     # Before changing to this mode the program would crash on large runs
     matplotlib.use("Agg")
@@ -77,7 +73,7 @@ def main():
         # csv data from previous runs
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
-            avg_data = get_reps_average(parsed_data, err_log)
+            avg_data = reps_similarity_test(parsed_data, err_log)
             
 
         save_err_log(output_directory, "Error log", err_log)
@@ -211,25 +207,30 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
         summary_csvs.append(pd.read_csv(csv_summary_path))
 
     summary_csvs = pd.concat(summary_csvs, ignore_index=True, sort=False)   
+    summary_csvs["plate"] = summary_csvs["plate"].str.lower()
     # Save all plate names
     plate_names = pd.unique(summary_csvs['plate'])
     file_names = pd.unique(summary_csvs['filename'])
 
+    # get the amount of plates in the first experiment
+    plate_count = len(pd.unique(summary_csvs.loc[summary_csvs['filename'] == summary_csvs['filename'][0]]['plate']))
+
     #Check if there are too many plates, i.e not the same names between replicates
-    if len(plate_names) > UPPER_PLATE_LIMIT:
-        add_line_to_error_log(err_log, 'Too many plates in summary_csvs')
-        raise ValueError(f'Too many plates in summary_csvs')
+    if len(plate_names) > plate_count:
+        add_line_to_error_log(err_log, 'Too many plates in summary_csvs, please make sure all experiment excel files have the same sheet names in them')
+        raise ValueError(f'Too many plates in summary_csvs, please make sure all experiment excel files have the same sheet names in them')
 
     # Check if there are too many filenames inside the dataframe
-    if len(file_names) > len(csv_file_location):
+    if len(file_names) != len(csv_summary_paths):
         add_line_to_error_log(err_log, 'Too many file names in summary_csvs')
         raise ValueError(f'Too many file names in summary_csvs')
 
     # go through the csvs and move the data into parsed_data
-    for i, csv_file_location in enumerate(csv_raw_data_paths):
+    for i, raw_csv_file_location in enumerate(csv_raw_data_paths):
         rep_data = []
 
-        current_csv = pd.read_csv(csv_file_location)
+        current_csv = pd.read_csv(raw_csv_file_location)
+        current_csv['plate'] = current_csv['plate'].str.lower()
 
         for plate in plate_names:
             curr_plate_raw_data = current_csv.loc[current_csv['plate'] == plate]
@@ -252,7 +253,10 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
                     else:
                         well_summary_data = summary_csvs.loc[(summary_csvs['well'] == well_key_as_text) & (summary_csvs['plate'] == plate) & (summary_csvs['filename'] == file_names[i])].squeeze()
                         # Prep the well data to add to the ExperimentData object
-                        well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) & (curr_plate_raw_data['plate'] == plate) & (summary_csvs['filename'] == file_names[i])]
+                        well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) &
+                                                                (curr_plate_raw_data['plate'] == plate) &
+                                                                (curr_plate_raw_data['filename'] == file_names[i])
+                                                            ]
                         ODs = list(well_raw_data['OD'])
                         exponent_begin = (well_summary_data["exponent_begin_time"], well_summary_data["exponent_begin_OD"])
                         max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
@@ -419,7 +423,7 @@ def create_data_tables(experiment_data, output_path, err_log):
                 key_as_well = convert_wellkey_to_text(key)
                 for i, OD in enumerate(experiment_data_point.wells[key].ODs):
                     raw_data_filename.append(experiment_data_point.file_name)
-                    raw_data_plate_names.append(experiment_data_point.plate_name)
+                    raw_data_plate_names.append(experiment_data_point.plate_name.lower())
                     raw_data_wells.append(key_as_well)
                     times.append(experiment_data_point.times[i])
                     ODs.append(OD)
@@ -606,8 +610,8 @@ def fill_growth_parameters(data, err_log):
     
         plate_num += 1
 
-def get_reps_average(reps_data, err_log):
-    '''avarage out plate replicates of a well
+def reps_similarity_test(reps_data, err_log):
+    '''flag the reps that aren't similar to one another
     
      Parameters
     ----------
@@ -621,6 +625,8 @@ def get_reps_average(reps_data, err_log):
     ExperimentData object
     '''
 
+    reps_similarity_table = 'RepA, well_repA, RepB, well_RepB, CC_score, ...    '
+
     # Generate the indexes for the pairwise CC test
     indexes = itertools.combinations(range(1, len(reps_data) + 1), 2)
 
@@ -629,19 +635,13 @@ def get_reps_average(reps_data, err_log):
     for i1, i2 in indexes:
         for j in range(0, len(reps_data[0])):
             for key in reps_data[i1][j].wells:
-                t1 = reps_data[i1][j].times
                 ODs1 = reps_data[i1][j].wells[key].ODs
-                
-                t2 = reps_data[i2][j].times
                 ODs2 = reps_data[i2][j].wells[key].ODs
 
-                correlation_res = signal.correlate([t1, ODs1], [t2, ODs2])
+                correlation_res = signal.correlate(ODs1, ODs2)
                 
 
-    
-
-    averaged_data = ExperimentData(reps_data[0][0].times, reps_data[0][0].temps, "", reps_data[0][0].file_name, {})
-    return averaged_data
+    return reps_similarity_table
 
 
 #Utils
