@@ -73,7 +73,7 @@ def main():
         # csv data from previous runs
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
-            avg_data = reps_similarity_test(parsed_data, err_log)
+            avg_data = get_reps_variation_data(parsed_data, err_log)
             
 
         save_err_log(output_directory, "Error log", err_log)
@@ -610,7 +610,7 @@ def fill_growth_parameters(data, err_log):
     
         plate_num += 1
 
-def reps_similarity_test(reps_data, err_log):
+def get_reps_variation_data(reps_data, err_log):
     '''flag the reps that aren't similar to one another
     
      Parameters
@@ -625,10 +625,15 @@ def reps_similarity_test(reps_data, err_log):
     ExperimentData object
     '''
 
-    reps_similarity_table = 'RepA, well_repA, RepB, well_RepB, CC_score, ...    '
+    reps_similarity_table = 'RepA, well_repA, RepB, well_RepB, mid_index, mid_index_CC_score, max_CC_score, max_CC_shift_from_mid[Hours] '
 
     # Generate the indexes for the pairwise CC test
-    indexes = itertools.combinations(range(1, len(reps_data) + 1), 2)
+    indexes = itertools.combinations(range(0, len(reps_data)), 2)
+
+    # Get the amount of time in hours between each two measurement
+    # technical repeats run on the same program in the stacker and therefore will have the same gaps between two measurments
+    # take the last time and devide it by the amount of measurements done that is the length of the time array
+    time_gap_hours_between_measurements = reps_data[0][0].times[-1] / len(reps_data[0][0].times)
 
     # Check if the reps are close enough to one another to average
     # Run a cross-correlation test pair-wise
@@ -638,8 +643,21 @@ def reps_similarity_test(reps_data, err_log):
                 ODs1 = reps_data[i1][j].wells[key].ODs
                 ODs2 = reps_data[i2][j].wells[key].ODs
 
+                # run CC on OD1 with itself to get a value to narmalize against
+                perfect_CC_score = max(signal.correlate(ODs1, ODs1))
+
+                # Run the CC test and save the results
+                # results with indexes toward the middle of the list reflect the score with small shifts
                 correlation_res = signal.correlate(ODs1, ODs2)
-                
+
+                # Find the middle index
+                middle_index = len(correlation_res) // 2
+                middle_CC_score = correlation_res[middle_index]
+
+                max_CC_score_index = np.argmax(correlation_res)
+
+                max_CC_score = correlation_res[max_CC_score_index]
+                max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
 
     return reps_similarity_table
 
