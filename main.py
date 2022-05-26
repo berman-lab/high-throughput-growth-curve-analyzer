@@ -52,11 +52,11 @@ def main():
             print("Importing the data from files")
             # Get the data from the files
             # Full run
-            parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
+            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
             # Test run
             #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"])
             # Small test run
-            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"], [7])
+            parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"], [7])
             
             # Analysis of the data
             fill_growth_parameters(parsed_data, err_log)
@@ -73,7 +73,7 @@ def main():
         # csv data from previous runs
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
-            avg_data = get_reps_variation_data(parsed_data, err_log)
+            variation_matrix = get_reps_variation_data(parsed_data, err_log)
             
 
         save_err_log(output_directory, "Error log", err_log)
@@ -121,7 +121,7 @@ def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B",
                     curr_file_name = pathlib.Path(excel_file_location).stem
                     
                     # Create a new object to save data into
-                    parsed_data.append(ExperimentData([], [], sheet, curr_file_name, {}))
+                    parsed_data.append(ExperimentData(plate_name=sheet, file_name=curr_file_name))
 
                     # Load the current sheet of the excel file
                     df = pd.read_excel(excel_file, sheet)
@@ -153,7 +153,7 @@ def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B",
                                 j = i - LEFT_OFFSET
                                 curr_well = (row_index, j)
                                 if curr_well not in parsed_data[-1].wells:
-                                    parsed_data[-1].wells[curr_well] = WellData(False, [row[i]], (), (), (), 0, [])
+                                    parsed_data[-1].wells[curr_well] = WellData(is_valid=False, ODs=[row[i]])
                                 # There is a previous reading for this cell, therefore normalize it against the first read then save it
                                 else:
                                     if row[i] == "OVER":
@@ -239,8 +239,8 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
             curr_plate_first_well_df = curr_plate_raw_data.loc[curr_plate_raw_data['well'] == f'{data_rows[0]}{data_columns[0]}']
             plate_measurements_times = list(curr_plate_first_well_df['time'])
             plate_temps = list(curr_plate_first_well_df['temperature'])
-
-            plate_data = ExperimentData(plate_measurements_times, plate_temps, plate, file_names[i], {})
+            
+            plate_data = ExperimentData(times = plate_measurements_times, temps = plate_temps, plate_name = plate, file_name = file_names[i])
 
             for row in data_rows:
                 for col in data_columns:
@@ -262,7 +262,8 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
                         max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
                         exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
                         max_population_density = well_summary_data["max_population_density"]
-                        plate_data.wells[curr_well] = WellData(True, ODs, exponent_begin, max_population_gr, exponent_end, max_population_density, [])
+                        plate_data.wells[curr_well] = WellData(is_valid = True, ODs = ODs, exponent_begin = exponent_begin, max_population_gr = max_population_gr,
+                        exponent_end = exponent_end, max_population_density = max_population_density)
             rep_data.append(plate_data)
             
         parsed_data.append(rep_data)
@@ -290,7 +291,7 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
 
     return parsed_data
 
-def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exponential_phase=False, draw_95=True):
+def create_graphs(data, output_path, title, err_log, decimal_percision, draw_95=True):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -358,13 +359,6 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_exp
                     ax.axline((x, y), slope=slope, color='firebrick', linestyle=':', label=f'maximum population growth rate: {str(round(slope, decimal_percision))}')
                     # plot the point on the graph at which this occures
                     ax.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
-
-                    # Exponential growth rate graph
-                    if draw_exponential_phase:
-                        # Find the index in which the exponent croses the maximum of the original data
-                        # + 1 to keep drawing a little more after the exponent croses the max
-                        stop_index = np.searchsorted(experiment_data.wells[key].exponent_ODs, max_OD).T + 1
-                        ax.plot(experiment_data.times[:stop_index], experiment_data.wells[key].exponent_ODs[:stop_index], alpha=alpha-0.2)
 
                     ax.legend(loc="lower right")
                 
@@ -571,23 +565,7 @@ def fill_growth_parameters(data, err_log):
                 
                 # prep for saving
                 exponet_end = (max_population_density_95_time, max_population_density_95)
-
-                # Finding the end of the rapid growth phase
-                t = np.array(experiment_data.times)
-                N = np.array(curr_well.ODs)
-                t, N = remove_normalization_artifacts(t, N)
                 
-                # Calculate the expected OD value of a point based on the time it was messured
-                ODs_exponent_values = []
-                
-                # Fit an exponent to the data to get the point in which we get the maximum slope
-                # a - slope, b - intercept
-                a, b = curveball.models.fit_exponential_growth_phase(t, N, k=2)
-                N0 = np.exp(b)
-                # Use the fitted exponent to find the matching ODs by time
-                for time in t:
-                    ODs_exponent_values.append(exponential_phase(time, N0, a))
-               
                 # Max slope calculation
                 # Get the time and OD of the point with the max slope
                 t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
@@ -597,7 +575,6 @@ def fill_growth_parameters(data, err_log):
                 curr_well.max_population_gr = (t1, y1, max_slope)
                 curr_well.exponent_end = exponet_end
                 curr_well.max_population_density= max_population_density
-                curr_well.exponent_ODs = ODs_exponent_values
 
                 curr_well.is_valid = True
 
@@ -611,7 +588,7 @@ def fill_growth_parameters(data, err_log):
         plate_num += 1
 
 def get_reps_variation_data(reps_data, err_log):
-    '''flag the reps that aren't similar to one another
+    '''Get a pandas dataframe with the data of the variations between reps
     
      Parameters
     ----------
@@ -619,13 +596,8 @@ def get_reps_variation_data(reps_data, err_log):
     
     err_log : [str]
         a refernce to the list containing all the previosuly logged errors
-
-    Returns
-    -------
-    ExperimentData object
     '''
-
-    reps_similarity_table = 'RepA, well_repA, RepB, well_RepB, mid_index, mid_index_CC_score, max_CC_score, max_CC_shift_from_mid[Hours] '
+    data = []
 
     # Generate the indexes for the pairwise CC test
     indexes = itertools.combinations(range(0, len(reps_data)), 2)
@@ -643,8 +615,8 @@ def get_reps_variation_data(reps_data, err_log):
                 ODs1 = reps_data[i1][j].wells[key].ODs
                 ODs2 = reps_data[i2][j].wells[key].ODs
 
-                # run CC on OD1 with itself to get a value to narmalize against
-                perfect_CC_score = max(signal.correlate(ODs1, ODs1))
+                # run CC on OD1 and OD2 with itself to get a value to normalize against
+                perfect_CC_score = max(max(signal.correlate(ODs2, ODs2)), max(signal.correlate(ODs1, ODs1)))
 
                 # Run the CC test and save the results
                 # results with indexes toward the middle of the list reflect the score with small shifts
@@ -659,49 +631,43 @@ def get_reps_variation_data(reps_data, err_log):
                 max_CC_score = correlation_res[max_CC_score_index]
                 max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
 
-    return reps_similarity_table
+                # TODO add theese
+                max_population_gr_time = []
+                max_population_gr_OD = []
+                max_population_gr_slope = []
+
+                repA = reps_data[i1][j]
+                repB = reps_data[i2][j]
+
+                data.append(
+                    {
+                        'repA': repA.file_name,
+                        'repB': repB.file_name,
+                        'plate': repA.plate_name,
+                        'well': convert_wellkey_to_text(key),
+                        'CC_score': middle_CC_score,
+                        'relative_CC_score' : middle_CC_score / perfect_CC_score,
+                        'max_CC_score' : max_CC_score,
+                        'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
+                        'repA_exponent_begin_time': repA.wells[key].exponent_begin[0],
+                        'repB_exponent_begin_time': repB.wells[key].exponent_begin[0],
+                        'repA_exponent_begin_OD': repA.wells[key].exponent_begin[1],
+                        'repB_exponent_begin_OD': repB.wells[key].exponent_begin[1],
+                        'repA_max_population_density': repA.wells[key].max_population_density,
+                        'repA_max_population_density': repB.wells[key].max_population_density,
+                        'repA_Time_95%(exp_end)': repA.wells[key].exponent_end[0],
+                        'repB_Time_95%(exp_end)': repB.wells[key].exponent_end[0],
+                        'repA_OD_95%': repA.wells[key].exponent_end[1], 
+                        'repB_OD_95%': repB.wells[key].exponent_end[1], 
+
+                        'upper_limit_CC_score': perfect_CC_score
+                    }
+                )
+
+    return pd.DataFrame(data)
 
 
 #Utils
-def exponential_phase(t, N0, slope):
-    '''
-    Calculate the value of a point with N0 * e^(slope * t)
-    Parameters
-    ----------
-    N0 : float
-        The first OD messured for the well after the end of the lag phase
-    slope : float
-        the slope of the the power of the exponenet
-    t: float
-        the time of the messurments in hours
-    Returns
-    -------
-    N0 * e^(slope * t) 
-    '''
-    return N0 * np.exp(slope * t)
-
-def remove_normalization_artifacts(t, N):
-    '''
-    Make sure there are no zeros or negative values (that came from the normalization) in the arrray to run log10 on the data
-    ----------
-    t : [float]
-        The times of the experiment
-    N : [float]
-        OD at time t[i]
-    Returns
-    -------
-    (t, N)
-    '''
-    # Find the index of the first non negative value in the N array
-    first_positive_index = np.searchsorted(N, ZERO_SUB).T
-
-    for i in range(len(t)):
-        if t[i] == 0:
-            t[i] = ZERO_SUB
-        if N[i] <= 0:
-            N[i] = N[first_positive_index]
-    return (t, N)
-
 def get_files_from_directory(path , extension):
     '''Get the full path to each file with the extension specified from the path'''
     files = []
