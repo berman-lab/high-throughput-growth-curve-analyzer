@@ -1,9 +1,9 @@
 from dataclasses import dataclass, field
 
-@dataclass()
+@dataclass(kw_only=True, slots=True)
 class ExperimentData:
-    times : field(default_factory=list)
-    temps : field(default_factory=list)
+    times : list[float] = field(default_factory=list)
+    temps : list[float] = field(default_factory=list)
     plate_name : str
     file_name : str
-    wells: field(default_factory=dict) 
+    wells: dict = field(default_factory=dict) 
