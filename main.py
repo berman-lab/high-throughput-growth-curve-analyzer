@@ -74,7 +74,7 @@ def main():
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
             variation_matrix = get_reps_variation_data(parsed_data, err_log)
-            
+            variation_matrix.to_csv(os.path.join(output_directory, f'{parsed_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -600,7 +600,7 @@ def get_reps_variation_data(reps_data, err_log):
     data = []
 
     # Generate the indexes for the pairwise CC test
-    indexes = itertools.combinations(range(0, len(reps_data)), 2)
+    indexes = list(itertools.combinations(range(0, len(reps_data)), 2))
 
     # Get the amount of time in hours between each two measurement
     # technical repeats run on the same program in the stacker and therefore will have the same gaps between two measurments
@@ -631,11 +631,6 @@ def get_reps_variation_data(reps_data, err_log):
                 max_CC_score = correlation_res[max_CC_score_index]
                 max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
 
-                # TODO add theese
-                max_population_gr_time = []
-                max_population_gr_OD = []
-                max_population_gr_slope = []
-
                 repA = reps_data[i1][j]
                 repB = reps_data[i2][j]
 
@@ -645,10 +640,7 @@ def get_reps_variation_data(reps_data, err_log):
                         'repB': repB.file_name,
                         'plate': repA.plate_name,
                         'well': convert_wellkey_to_text(key),
-                        'CC_score': middle_CC_score,
                         'relative_CC_score' : middle_CC_score / perfect_CC_score,
-                        'max_CC_score' : max_CC_score,
-                        'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
                         'repA_exponent_begin_time': repA.wells[key].exponent_begin[0],
                         'repB_exponent_begin_time': repB.wells[key].exponent_begin[0],
                         'repA_exponent_begin_OD': repA.wells[key].exponent_begin[1],
@@ -658,14 +650,21 @@ def get_reps_variation_data(reps_data, err_log):
                         'repA_Time_95%(exp_end)': repA.wells[key].exponent_end[0],
                         'repB_Time_95%(exp_end)': repB.wells[key].exponent_end[0],
                         'repA_OD_95%': repA.wells[key].exponent_end[1], 
-                        'repB_OD_95%': repB.wells[key].exponent_end[1], 
+                        'repB_OD_95%': repB.wells[key].exponent_end[1],
+                        'repA_max_population_gr_time': repA.wells[key].max_population_gr[0],
+                        'repB_max_population_gr_time': repB.wells[key].max_population_gr[0],
+                        'repA_max_population_gr_OD': repA.wells[key].max_population_gr[1],
+                        'repB_max_population_gr_OD': repB.wells[key].max_population_gr[1],
+                        'repA_max_population_gr_slope': repA.wells[key].max_population_gr[2],
+                        'repB_max_population_gr_slope': repA.wells[key].max_population_gr[2],
 
-                        'upper_limit_CC_score': perfect_CC_score
+                        'CC_score': middle_CC_score,
+                        'max_CC_score' : max_CC_score,
+                        'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
+                        'upper_limit_CC_score': perfect_CC_score,
                     }
                 )
-
     return pd.DataFrame(data)
-
 
 #Utils
 def get_files_from_directory(path , extension):
@@ -741,7 +740,6 @@ def get_operationg_modes_for_display():
     for k, v in operating_modes.items():
         out.append(f"{k}. {v}")
     return out
-
 
 if __name__ == "__main__":
     main()
