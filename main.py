@@ -73,8 +73,9 @@ def main():
         # csv data from previous runs
         elif (mode_num == 2):
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
-            variation_matrix = get_reps_variation_data(parsed_data, err_log)
+            variation_matrix = get_reps_variation_data(parsed_data)
             variation_matrix.to_csv(os.path.join(output_directory, f'{parsed_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
+            aeraged_rep = get_averaged_ExperimentData(parsed_data)
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -262,7 +263,8 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
                         max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
                         exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
                         max_population_density = well_summary_data["max_population_density"]
-                        plate_data.wells[curr_well] = WellData(is_valid = True, ODs = ODs, exponent_begin = exponent_begin, max_population_gr = max_population_gr,
+                        isvalid = well_summary_data["valid"]
+                        plate_data.wells[curr_well] = WellData(is_valid = isvalid, ODs = ODs, exponent_begin = exponent_begin, max_population_gr = max_population_gr,
                         exponent_end = exponent_end, max_population_density = max_population_density)
             rep_data.append(plate_data)
             
@@ -587,7 +589,8 @@ def fill_growth_parameters(data, err_log):
     
         plate_num += 1
 
-def get_reps_variation_data(reps_data, err_log):
+# QA fuctions
+def get_reps_variation_data(reps_data):
     '''Get a pandas dataframe with the data of the variations between reps
     
      Parameters
@@ -600,7 +603,7 @@ def get_reps_variation_data(reps_data, err_log):
     data = []
 
     # Generate the indexes for the pairwise CC test
-    indexes = list(itertools.combinations(range(0, len(reps_data)), 2))
+    indexes = itertools.combinations(range(0, len(reps_data)), 2)
 
     # Get the amount of time in hours between each two measurement
     # technical repeats run on the same program in the stacker and therefore will have the same gaps between two measurments
@@ -665,6 +668,30 @@ def get_reps_variation_data(reps_data, err_log):
                     }
                 )
     return pd.DataFrame(data)
+
+def get_averaged_ExperimentData(reps_data):
+
+    all_times = []
+    mean_times = []
+    all_temps = []
+    mean_temps = []
+
+    # average out all the times and temperatures
+    for i in range(0, len(reps_data[0])):
+        # Create a new list to hold the internal reps data
+        all_times.append([])
+        all_temps.append([])
+
+        # add the data from each rep to the list
+        for rep in reps_data:
+            all_times[-1].append(np.array(rep[i].times))
+            all_temps[-1].append(np.array(rep[i].temps))
+        
+        # avarage out all the internal values from the nested lists and put the mean into the mean list
+
+
+    return ""
+
 
 #Utils
 def get_files_from_directory(path , extension):
