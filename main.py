@@ -279,9 +279,11 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
     key = list(parsed_data[0][0].wells)[0]
     min_ODs_len = len(parsed_data[0][0].wells[key].ODs)    
     for i in range(0, len(parsed_data)):
-        tmp_len = len(parsed_data[i][0].wells[key].ODs)
-        if tmp_len < min_ODs_len:
-            min_ODs_len = tmp_len
+        for key in parsed_data[i][0].wells:
+            for plate in parsed_data[i]:
+                tmp_len = len(plate.wells[key].ODs)
+                if tmp_len < min_ODs_len:
+                    min_ODs_len = tmp_len
     
     # Use the value to trim all the lists to the same length
     for replicate_data in parsed_data:
@@ -671,24 +673,36 @@ def get_reps_variation_data(reps_data):
 
 def get_averaged_ExperimentData(reps_data):
 
+    result = []
+
     all_times = []
-    mean_times = []
     all_temps = []
-    mean_temps = []
+    
 
     # average out all the times and temperatures
-    for i in range(0, len(reps_data[0])):
-        # Create a new list to hold the internal reps data
+    for plate_index in range(0, len(reps_data[0])):
+        result.append(ExperimentData(plate_name=f'Averaged plate {plate_index + 1}', file_name=reps_data[0][0].file_name))
+
+        # Create a new list to hold the internal reps data. Each element in the lists is the data about the plate from all the reps
         all_times.append([])
         all_temps.append([])
 
         # add the data from each rep to the list
         for rep in reps_data:
-            all_times[-1].append(np.array(rep[i].times))
-            all_temps[-1].append(np.array(rep[i].temps))
+            all_times[-1].append(np.array(rep[plate_index].times))
+            all_temps[-1].append(np.array(rep[plate_index].temps))
+            tmp_ODs = []
+        
+        for key in reps_data[0]:
+            for rep in reps_data:
+                #tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
+            
+            if not key in result[-1].wells[key]:
+                result[-1].wells[key] = WellData(ODs='')
         
         # avarage out all the internal values from the nested lists and put the mean into the mean list
-
+        result[-1].times = np.mean(all_times, axis=1).tolist()
+        result[-1].temps = np.mean(all_temps, axis=1).tolist()
 
     return ""
 
