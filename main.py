@@ -693,12 +693,12 @@ def get_averaged_ExperimentData(reps_data):
             all_temps[-1].append(np.array(rep[plate_index].temps))
             tmp_ODs = []
         
-        for key in reps_data[0]:
-            for rep in reps_data:
-                #tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
+        # for key in reps_data[0]:
+        #     for rep in reps_data:
+        #         tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
             
-            if not key in result[-1].wells[key]:
-                result[-1].wells[key] = WellData(ODs='')
+        #     if not key in result[-1].wells[key]:
+        #         result[-1].wells[key] = WellData(ODs='')
         
         # avarage out all the internal values from the nested lists and put the mean into the mean list
         result[-1].times = np.mean(all_times, axis=1).tolist()
