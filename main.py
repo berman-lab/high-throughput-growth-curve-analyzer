@@ -1,5 +1,6 @@
 import os
 import pathlib
+from re import T
 import curveball
 import itertools
 import matplotlib
@@ -45,25 +46,25 @@ def main():
         print("Please choose an operating mode:")
         print(*get_operationg_modes_for_display(), sep = "\n")
         print("\nPlease type the number you chose here:")
-        mode_num = 2#int(input())
+        mode_num = 1#int(input())
 
         # Tecan formated files
         if(mode_num == 1):
             print("Importing the data from files")
             # Get the data from the files
             # Full run
-            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
+            parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
             # Test run
             #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"])
             # Small test run
-            parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"], [7])
+            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"], [7])
             
             # Analysis of the data
             fill_growth_parameters(parsed_data, err_log)
 
             print("Creating figures")
             # Graph the data and save the figures to the output_directory
-            create_graphs(parsed_data, output_directory, "Foo Bar", err_log, decimal_percision_in_plots)
+            create_single_well_graphs(parsed_data, output_directory, "OD600[nm] against time[sec]", err_log, decimal_percision_in_plots)
 
             df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory, err_log)
 
@@ -75,7 +76,8 @@ def main():
             parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
             variation_matrix = get_reps_variation_data(parsed_data)
             variation_matrix.to_csv(os.path.join(output_directory, f'{parsed_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
-            aeraged_rep = get_averaged_ExperimentData(parsed_data)
+            averaged_rep = get_averaged_ExperimentData(parsed_data)
+            create_reps_avarage_graphs(parsed_data, averaged_rep, output_directory)
 
         save_err_log(output_directory, "Error log", err_log)
 
@@ -295,7 +297,7 @@ def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", 
 
     return parsed_data
 
-def create_graphs(data, output_path, title, err_log, decimal_percision, draw_95=True):
+def create_single_well_graphs(data, output_path, title, err_log, decimal_percision, draw_95=True):
     '''Create graphs from the data collected in previous steps
     Parameters
     ----------
@@ -342,7 +344,7 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_95=
                 if curr_well.is_valid:
                     # Max OD plotting
                     max_OD = experiment_data.wells[key].max_population_density
-                    ax.axhline(y=max_OD, color='black', linestyle=':', label=f'maximum OD600: {str(round(max_OD, decimal_percision))}')
+                    ax.axhline(y=max_OD, color='black', linestyle=':', label=f'Carrying capacity: {str(round(max_OD, decimal_percision))}')
 
                     # End of lag phase plotting
                     exponent_begin_time, exponent_begin_OD = experiment_data.wells[key].exponent_begin
@@ -375,6 +377,9 @@ def create_graphs(data, output_path, title, err_log, decimal_percision, draw_95=
                 f"Graphing of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
             finally:
                 plt.close('all')
+
+def create_reps_avarage_graphs(reps, averaged_rep, output_path):
+    return ':)'
 
 def create_data_tables(experiment_data, output_path, err_log):
     '''Create tables from the data collected in previous steps.
@@ -559,8 +564,8 @@ def fill_growth_parameters(data, err_log):
                 exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
                 exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, curr_well.ODs)
 
-                # Get the maximal obsereved OD
-                max_population_density = max(curr_well.ODs)
+                # Save the carrying capacity of the population as determined by the model
+                max_population_density = current_lag_model[0].init_params["K"].value
                 
                 # 95% of growth as an indication of the end of the rapid growth phase
                 max_population_density_95 = max_population_density * 0.95
@@ -693,18 +698,20 @@ def get_averaged_ExperimentData(reps_data):
             all_temps[-1].append(np.array(rep[plate_index].temps))
             tmp_ODs = []
         
-        # for key in reps_data[0]:
-        #     for rep in reps_data:
-        #         tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
+        # average the data from each well and save it into the result object
+        # for each key - well in the wells dictionary
+        for key in reps_data[0][0].wells:
+            for rep in reps_data:
+                tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
             
-        #     if not key in result[-1].wells[key]:
-        #         result[-1].wells[key] = WellData(ODs='')
+            # save the average of the data from each rep into the well under the appropraite key in result object
+            result[-1].wells[key] = WellData(ODs=np.mean(tmp_ODs, axis=1), is_valid=True)
         
         # avarage out all the internal values from the nested lists and put the mean into the mean list
         result[-1].times = np.mean(all_times, axis=1).tolist()
         result[-1].temps = np.mean(all_temps, axis=1).tolist()
 
-    return ""
+    return result
 
 
 #Utils
