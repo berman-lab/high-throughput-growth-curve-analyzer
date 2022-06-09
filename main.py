@@ -1,6 +1,5 @@
 import os
 import pathlib
-from re import T
 import curveball
 import itertools
 import matplotlib
@@ -46,7 +45,7 @@ def main():
         print("Please choose an operating mode:")
         print(*get_operationg_modes_for_display(), sep = "\n")
         print("\nPlease type the number you chose here:")
-        mode_num = 1#int(input())
+        mode_num = int(input())
 
         # Tecan formated files
         if(mode_num == 1):
@@ -378,8 +377,42 @@ def create_single_well_graphs(data, output_path, title, err_log, decimal_percisi
             finally:
                 plt.close('all')
 
-def create_reps_avarage_graphs(reps, averaged_rep, output_path):
-    return ':)'
+def create_reps_avarage_graphs(reps, averaged_reps, output_path):
+    '''
+    Create graphs from the data collected in previous steps
+    Parameters
+    ----------
+    reps : [ExperimentData object]
+        All the data from the expriment
+    averaged_rep : ExperimentData object
+        The data from the expriment after the averaging procedure
+    output_path : str
+        path to the file into which the graphes will be saved to
+    Returns
+    -------
+    null
+    '''
+    # Iterate over all the plates
+    for i in range(0, len(reps[0])):
+        # Loop over all wells within each plate
+        for key in averaged_reps[i].wells:
+            # Setup axis and the figure objects
+            fig, ax = plt.subplots()
+            ax.set_title(f"Average of wells {convert_wellkey_to_text(key)} from all wells from {reps[0][i].plate_name}")
+            ax.set_xlabel('Time [hours]')
+            ax.set_ylabel('OD600')
+
+            # Plot the main graph
+            ax.plot(averaged_reps[i].times[0], averaged_reps[i].wells[key].ODs, color='black', label='Average')
+            # Plot the replicates graphs
+            for j in range(0, len(reps)):
+                ax.plot(reps[j][i].times, reps[j][i].wells[key].ODs, linestyle=':', label=f'{reps[j][i].plate_name} from replicate {i+j+1}')
+            
+            
+            ax.legend(loc="lower right")
+            # Save the figure
+            fig.savefig(os.path.join(output_path, f"Average of wells {convert_wellkey_to_text(key)} in {reps[j][i].plate_name}"))
+            plt.close('all')
 
 def create_data_tables(experiment_data, output_path, err_log):
     '''Create tables from the data collected in previous steps.
@@ -696,16 +729,17 @@ def get_averaged_ExperimentData(reps_data):
         for rep in reps_data:
             all_times[-1].append(np.array(rep[plate_index].times))
             all_temps[-1].append(np.array(rep[plate_index].temps))
-            tmp_ODs = []
+            
         
         # average the data from each well and save it into the result object
         # for each key - well in the wells dictionary
         for key in reps_data[0][0].wells:
+            tmp_ODs = []
             for rep in reps_data:
                 tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
             
             # save the average of the data from each rep into the well under the appropraite key in result object
-            result[-1].wells[key] = WellData(ODs=np.mean(tmp_ODs, axis=1), is_valid=True)
+            result[-1].wells[key] = WellData(ODs=np.mean(tmp_ODs, axis=0), is_valid=True)
         
         # avarage out all the internal values from the nested lists and put the mean into the mean list
         result[-1].times = np.mean(all_times, axis=1).tolist()
@@ -713,6 +747,18 @@ def get_averaged_ExperimentData(reps_data):
 
     return result
 
+# TODO: Add a check for the CC score of each well to make sure it is not too low and add to code the output into the error log
+def flag_invalid_replicates(reps_data):
+    '''
+    Finds the wells within replicates that are invalid and returns a list of the indexes of the invalid wells
+    '''
+    invalid_replicates = []
+    for i in range(0, len(reps_data)):
+        for j in range(0, len(reps_data[i])):
+            for key in reps_data[i][j].wells:
+                if reps_data[i][j].wells[key].is_valid == False:
+                    invalid_replicates.append((i, j, key))
+    return invalid_replicates
 
 #Utils
 def get_files_from_directory(path , extension):
