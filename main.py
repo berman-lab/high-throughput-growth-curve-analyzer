@@ -1,4 +1,7 @@
 import os
+import io
+import utils
+import logging
 import pathlib
 import curveball
 import itertools
@@ -10,6 +13,7 @@ from well_data import WellData
 import matplotlib.pyplot as plt
 from operating_mode import operating_modes
 from experiment_data import ExperimentData
+
 
 
 def main():
@@ -32,12 +36,11 @@ def main():
     matplotlib.use("Agg")
 
     # Stores all the error messages for logging
-    err_log = []
+    
+    logging.basicConfig(filename='Message.log', encoding='utf-8', level=logging.DEBUG)
     # The amount of digits after the decimal point to show in plots
     decimal_percision_in_plots = 3
 
-    # Tuple with the all the extensions all the data files
-    extensions_tecan = (".xlsx",)
     extensions_csv = (".csv",)
     try:
         # User input - will later be replaced with gui
@@ -52,7 +55,7 @@ def main():
             print("Importing the data from files")
             # Get the data from the files
             # Full run
-            parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log)
+            parsed_data = io.read_tecan_stacker_xlsx(input_directory, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
             # Test run
             #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"])
             # Small test run
@@ -87,9 +90,12 @@ def main():
 
 #IO
 def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
-    '''Read all the data from the files with the given extension in the input directory given
+    '''
+    Desrciption
+    -----------
+    Read all the data from the files with the given extension in the input directory given
     
-     Parameters
+    Parameters
     ----------
     input_directory : path object
         The path to the folder where all the data we want to analyze is stored
@@ -577,7 +583,7 @@ def fill_growth_parameters(data, err_log):
     # Loop all plates
     for experiment_data in data:
 
-        clear_console()
+        utils.clear_console()
         print(f"Started training in {experiment_data.plate_name}")
 
         # Loop all ODs within each plate and train model
@@ -823,11 +829,6 @@ def save_err_log(path, name, err_log):
     with open(path + "/" + name + ".txt", 'w') as file:
         file.writelines("% s\n" % line for line in err_log)
 
-def clear_console():
-    command = 'clear'
-    if os.name in ('nt', 'dos'):  # If Machine is running on Windows, use cls
-        command = 'cls'
-    os.system(command)
 
 def get_operationg_modes_for_display():
     out = []
