@@ -28,3 +28,7 @@ __pycache__/operating_mode.cpython-38.pyc
 __pycache__/experiment_data.cpython-310.pyc
 __pycache__/operating_mode.cpython-310.pyc
 __pycache__/well_data.cpython-310.pyc
+__pycache__/utils.cpython-310.pyc
+__pycache__/gc_io.cpython-310.pyc
+__pycache__/gc_utils.cpython-310.pyc
+.vscode/launch.json
