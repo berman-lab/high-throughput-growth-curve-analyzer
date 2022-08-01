@@ -1,6 +1,4 @@
 import os
-import io
-import utils
 import logging
 import pathlib
 import curveball
@@ -9,12 +7,15 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from scipy import signal
-from well_data import WellData
 import matplotlib.pyplot as plt
-from operating_mode import operating_modes
+
+# Interanal modules
+import gc_io
+import gc_utils
+
+# To be deleted
+from well_data import WellData
 from experiment_data import ExperimentData
-
-
 
 def main():
     # Base config and program parametrs
@@ -24,69 +25,60 @@ def main():
     # The directory into which all the graphs will be saved
     output_directory = os.path.join(base_path, "Out")
     
+    # Setup log file
+    logging.basicConfig(filename=f'{os.path.join(output_directory, "messages.log")}', filemode='w', encoding='utf-8', level=logging.DEBUG)
+
     # Globals
+    # Valued used to replace zeros with a values close to 0
+    # that will not cause errors when applaying log to the data
     global ZERO_SUB
     ZERO_SUB = 0.000001
 
+    # Used to account for the extrs column that the pandas reading function adds to the data
     global LEFT_OFFSET
     LEFT_OFFSET = 1
 
-    # Matplotlib backend mode - a non-interactive backend that can only write to files
-    # Before changing to this mode the program would crash on large runs
-    matplotlib.use("Agg")
-
-    # Stores all the error messages for logging
-    
-    logging.basicConfig(filename='Message.log', encoding='utf-8', level=logging.DEBUG)
     # The amount of digits after the decimal point to show in plots
-    decimal_percision_in_plots = 3
+    global DECIMAL_PERCISION_IN_PLOTS
+    DECIMAL_PERCISION_IN_PLOTS = 3
 
-    extensions_csv = (".csv",)
-    try:
-        # User input - will later be replaced with gui
-        # Asking the user to choose an operating mode
-        print("Please choose an operating mode:")
-        print(*get_operationg_modes_for_display(), sep = "\n")
-        print("\nPlease type the number you chose here:")
-        mode_num = int(input())
+    # Matplotlib backend mode - a non-interactive backend that can only write to files
+    # Before changing to this mode the program would crash after the creation of about 250 graphs
+    matplotlib.use("Agg")    
 
-        # Tecan formated files
-        if(mode_num == 1):
-            print("Importing the data from files")
-            # Get the data from the files
-            # Full run
-            parsed_data = io.read_tecan_stacker_xlsx(input_directory, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
-            # Test run
-            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"])
-            # Small test run
-            #parsed_data = get_tecan_stacker_data(input_directory, extensions_tecan, err_log, ["B"], [7])
-            
-            # Analysis of the data
-            fill_growth_parameters(parsed_data, err_log)
+    # Get all the files from the input directory
+    files_for_analysis = gc_utils.get_files_from_directory(input_directory, "xlsx")
+    # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
+    file_df_mapping = {}
 
-            print("Creating figures")
-            # Graph the data and save the figures to the output_directory
-            create_single_well_graphs(parsed_data, output_directory, "OD600[nm] against time[sec]", err_log, decimal_percision_in_plots)
+    # Add all the file names as keys to the dictionary
+    for file in files_for_analysis:
+        file_df_mapping[pathlib.Path(file).stem] = None
 
-            df_raw_data, df_wells_summary = create_data_tables(parsed_data, output_directory, err_log)
+    print("Importing the data from files")
+    # Get the data from the files
+    for curr_file in files_for_analysis:
+        file_df_mapping[pathlib.Path(curr_file).stem] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
+    
+    # Analysis of the data
+    fill_growth_parameters(raw_data)
 
-            df_raw_data.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
-            df_wells_summary.to_csv(os.path.join(output_directory, f'{parsed_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
-        
-        # csv data from previous runs
-        elif (mode_num == 2):
-            parsed_data = get_csv_raw_data(input_directory, extensions_csv, err_log)
-            variation_matrix = get_reps_variation_data(parsed_data)
-            variation_matrix.to_csv(os.path.join(output_directory, f'{parsed_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
-            averaged_rep = get_averaged_ExperimentData(parsed_data)
-            create_reps_avarage_graphs(parsed_data, averaged_rep, output_directory)
+    print("Creating figures")
+    # Graph the data and save the figures to the output_directory
+    create_single_well_graphs(raw_data, output_directory, "OD600[nm] against time[sec]")
 
-        save_err_log(output_directory, "Error log", err_log)
+    df_raw_data, df_wells_summary = create_data_tables(raw_data, output_directory)
 
-    except Exception as e:
-        print(str(e))
-        add_line_to_error_log(err_log, str(e))
-        save_err_log(output_directory, "Error log", err_log)
+    df_raw_data.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
+    df_wells_summary.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
+
+    raw_data = get_csv_raw_data(input_directory)
+    variation_matrix = get_reps_variation_data(raw_data)
+    variation_matrix.to_csv(os.path.join(output_directory, f'{raw_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
+    averaged_rep = get_averaged_ExperimentData(raw_data)
+    create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
+
+    save_err_log(output_directory, "Error log")
 
 #IO
 def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
@@ -170,14 +162,12 @@ def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B",
                                         parsed_data[-1].wells[curr_well].ODs.append(row[i] - parsed_data[-1].wells[curr_well].ODs[0])
                 except Exception as e:
                     print(str(e))
-                    add_line_to_error_log(err_log,
-                    f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {str(e)}")
+                    #f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {str(e)}")
     # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
     for experiment_data in parsed_data:
         for row_index, column_index in experiment_data.wells:
-            experiment_data.wells[(row_index, column_index)].ODs[0] = 0          
-
-
+            experiment_data.wells[(row_index, column_index)].ODs[0] = 0
+    
     return parsed_data
 
 def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
@@ -630,8 +620,7 @@ def fill_growth_parameters(data, err_log):
                 
             except Exception as e:
                 print(str(e))
-                add_line_to_error_log(err_log,
-                 f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
+                #f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
     
         plate_num += 1
 
@@ -767,13 +756,7 @@ def flag_invalid_replicates(reps_data):
     return invalid_replicates
 
 #Utils
-def get_files_from_directory(path , extension):
-    '''Get the full path to each file with the extension specified from the path'''
-    files = []
-    for file in os.listdir(path):
-        if file.endswith(extension):
-            files.append(os.path.join(path ,file))
-    return files
+
 
 def create_tidy_dataframe_list(data):
     '''Creates a tidy complient pandas dataset that will later by analyzed by curveball.
@@ -822,19 +805,9 @@ def convert_wellkey_to_text(key):
     '''
     return chr(key[0] + 66) + str(key[1])
 
-def add_line_to_error_log(log, new_line):
-    log.append(new_line)
-
 def save_err_log(path, name, err_log):
     with open(path + "/" + name + ".txt", 'w') as file:
         file.writelines("% s\n" % line for line in err_log)
-
-
-def get_operationg_modes_for_display():
-    out = []
-    for k, v in operating_modes.items():
-        out.append(f"{k}. {v}")
-    return out
 
 if __name__ == "__main__":
     main()
