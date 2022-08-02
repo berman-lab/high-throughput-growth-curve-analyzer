@@ -51,15 +51,13 @@ def main():
     # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
     file_df_mapping = {}
 
-    # Add all the file names as keys to the dictionary
-    for file in files_for_analysis:
-        file_df_mapping[pathlib.Path(file).stem] = None
-
     print("Importing the data from files")
-    # Get the data from the files
-    for curr_file in files_for_analysis:
-        file_df_mapping[pathlib.Path(curr_file).stem] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
-    
+    # Add all the file names as keys to the dictionary and save the data in the dictionary
+    for file in files_for_analysis:
+        file_df_mapping[pathlib.Path(file).stem] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
+
+    # Save the raw data to a xlsx file
+
     # Analysis of the data
     fill_growth_parameters(raw_data)
 
