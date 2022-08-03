@@ -1,7 +1,5 @@
 import os
 
-from numpy import argmax
-
 # gc prefix added to avoid name conflict with other modules
 # This file contains all general utility functions
 
@@ -20,7 +18,12 @@ def get_files_from_directory(path , extension):
     return files
 
 def get_max_cycle_number(df):
-    '''Get the cycle number from the dataframe'''
+    '''Get the number of cycles the tecan stacker did when reading the data
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        dataframe in the tecan stacker format
+    '''
     first_column = list(df.iloc[:, 0])
     for i in range(len(first_column) -1, -1, -1):
         if first_column[i] == "Cycle Nr.":
