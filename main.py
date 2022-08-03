@@ -9,13 +9,8 @@ import pandas as pd
 from scipy import signal
 import matplotlib.pyplot as plt
 
-# Interanal modules
 import gc_io
 import gc_utils
-
-# To be deleted
-from well_data import WellData
-from experiment_data import ExperimentData
 
 def main():
     # Base config and program parametrs
@@ -323,143 +318,6 @@ def create_reps_avarage_graphs(reps, averaged_reps, output_path):
             fig.savefig(os.path.join(output_path, f"Average of wells {convert_wellkey_to_text(key)} in {reps[j][i].plate_name}"))
             plt.close('all')
 
-def create_data_tables(experiment_data, output_path, err_log):
-    '''Create tables from the data collected in previous steps.
-    One table will contain all the data we measured during the experiment in an idetifiable way.
-    Fields: filename, plate, well, time, OD, temperature.
-    This table will be refered to as 'raw_data'.
-
-    The second table will contain the results of the calculations made for each well. 
-    Fields: filename, plate, well, exponent_begin_time, exponent_begin_OD, exponent_end_time, exponent_end_OD,
-                   max_population_gr_time, max_population_gr_OD, max_population_gr_slope, max_population_density
-    Thia table will be refered to as 'wells_summary'
-    
-    Parameters
-    ----------
-    data : ExperimentData object
-        All the data from the expriment
-    output_path : str
-        The path to save the result into
-    err_log: [str]
-        a refernce to the list containing all the previosuly logged errors
-    Returns
-    -------
-    tuple in the structure of: (df_raw_data, df_wells_summary)    
-    '''
-    try:
-        # datasets for the final result to be saved into
-        df_raw_data = None
-        df_wells_summary = None
-        
-        # lists to hold all the data before final storage in dataframes
-        # raw_data lists
-        # filename will be set at the end since it will be the same for all rows
-        raw_data_filename = []
-        raw_data_plate_names = []
-        raw_data_wells = []
-        times = []
-        ODs = []
-        temperatures = []
-
-        # Copy the data to the needed format
-        for experiment_data_point in experiment_data:
-        # Loop all ODs within each plate
-            for key in experiment_data_point.wells:
-                key_as_well = convert_wellkey_to_text(key)
-                for i, OD in enumerate(experiment_data_point.wells[key].ODs):
-                    raw_data_filename.append(experiment_data_point.file_name)
-                    raw_data_plate_names.append(experiment_data_point.plate_name.lower())
-                    raw_data_wells.append(key_as_well)
-                    times.append(experiment_data_point.times[i])
-                    ODs.append(OD)
-                    temperatures.append(experiment_data_point.temps[i])
-                
-        df_raw_data = pd.DataFrame(data = {'filename': raw_data_filename, 'plate': raw_data_plate_names, 'well': raw_data_wells, 'time': times, 'OD': ODs, 'temperature': temperatures})
-        
-        # wells_summary lists
-        wells_summary_filename = []
-        wells_summary_validity = []
-        wells_summary_plate_names = []
-        wells_summary_wells = []
-        exponent_begin_time = []
-        exponent_begin_OD = []
-        max_population_density = []
-        max_population_density_95_Time = []
-        max_population_95_ODs = []
-        max_population_gr_time = []
-        max_population_gr_OD = []
-        max_population_gr_slope = []
-        
-
-        # Copy the data to the needed format
-        for experiment_data_point in experiment_data:
-        # Loop all ODs within each plate
-            for key in experiment_data_point.wells:
-                try:
-                    # Save for reuse
-                    curr_well = experiment_data_point.wells[key]
-
-                    wells_summary_filename.append(experiment_data_point.file_name)
-                    wells_summary_validity.append(curr_well.is_valid)
-                    wells_summary_plate_names.append(experiment_data_point.plate_name)
-                    
-                    key_as_well = convert_wellkey_to_text(key)
-                    wells_summary_wells.append(key_as_well)
-
-                    if curr_well.is_valid:
-                        (end_of_Lag_time, end_of_Lag_OD) = curr_well.exponent_begin
-                        exponent_begin_time.append(end_of_Lag_time)
-                        exponent_begin_OD.append(end_of_Lag_OD)
-                        max_population_density.append(curr_well.max_population_density)
-
-                        max_population_95_Time, max_population_95_OD = curr_well.exponent_end
-                        max_population_density_95_Time.append(max_population_95_Time)
-                        max_population_95_ODs.append(max_population_95_OD)
-
-                        (time, OD, slope) = curr_well.max_population_gr
-                        max_population_gr_time.append(time)
-                        max_population_gr_OD.append(OD)
-                        max_population_gr_slope.append(slope)
-                    else:
-                        exponent_begin_time.append(-1)
-                        exponent_begin_OD.append(-1)
-                        max_population_density.append(-1)
-                        max_population_density_95_Time.append(-1)
-                        max_population_95_ODs.append(-1)
-                        max_population_gr_time.append(-1)
-                        max_population_gr_OD.append(-1)
-                        max_population_gr_slope.append(-1)
-
-
-                except Exception as e:
-                    print(str(e))
-                    add_line_to_error_log(err_log,
-                    f"Data frame row {convert_wellkey_to_text(key)} at plate: {experiment_data[0].plate_name} failed with the following exception mesaage: {str(e)}")
-
-
-        df_wells_summary = pd.DataFrame(data = {
-                                                    'filename': wells_summary_filename,
-                                                    'valid': wells_summary_validity,
-                                                    'plate': wells_summary_plate_names,
-                                                    'well': wells_summary_wells,
-                                                    'exponent_begin_time': exponent_begin_time,
-                                                    'exponent_begin_OD': exponent_begin_OD,
-                                                    'max_population_density': max_population_density,
-                                                    'Time_95%(exp_end)': max_population_density_95_Time,
-                                                    'OD_95%': max_population_95_ODs, 
-                                                    'max_population_gr_time': max_population_gr_time,
-                                                    'max_population_gr_OD': max_population_gr_OD,
-                                                    'max_population_gr_slope': max_population_gr_slope
-                                                }
-                                        )
-        
-    except Exception as e:
-                print(str(e))
-                add_line_to_error_log(err_log,
-                f"Creation of data tables had an error at plate: {experiment_data.plate_name} it failed with the following exception mesaage: {str(e)}")
-    
-    return (df_raw_data, df_wells_summary)
-
 #Fitting
 def fill_growth_parameters(data, err_log):
     '''
@@ -520,7 +378,7 @@ def fill_growth_parameters(data, err_log):
                 # Max slope calculation
                 # Get the time and OD of the point with the max slope
                 t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
-
+                
                 # Save model estimations to fields in the object
                 curr_well.exponent_begin = (exponent_begin_time, exponent_begin_OD)
                 curr_well.max_population_gr = (t1, y1, max_slope)
