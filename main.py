@@ -22,12 +22,9 @@ def main():
     base_path = os.path.normcase("c:\Data\\bio-graphs")
     # Input directory
     input_directory = os.path.join(base_path, "In")
-    # The directory into which all the graphs will be saved
+    # Output directory
     output_directory = os.path.join(base_path, "Out")
     
-    # Setup log file
-    logging.basicConfig(filename=f'{os.path.join(output_directory, "messages.log")}', filemode='w', encoding='utf-8', level=logging.DEBUG)
-
     # Globals
     # Valued used to replace zeros with a values close to 0
     # that will not cause errors when applaying log to the data
@@ -48,126 +45,44 @@ def main():
 
     # Get all the files from the input directory
     files_for_analysis = gc_utils.get_files_from_directory(input_directory, "xlsx")
+    # Create a folder for the current analysis in the output directory based on the first file name and update the output directory variable to the new path
+    output_directory = gc_io.create_directory(output_directory, pathlib.Path(files_for_analysis[0]).stem)
+    # Setup log file now that the specific output directory is known
+    logging.basicConfig(filename=f'{os.path.join(output_directory, "messages.log")}', filemode='w', encoding='utf-8', level=logging.DEBUG)
+
+
     # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
     file_df_mapping = {}
-
     print("Importing the data from files")
     # Add all the file names as keys to the dictionary and save the data in the dictionary
     for file in files_for_analysis:
-        file_df_mapping[pathlib.Path(file).stem] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
+        current_file_name = pathlib.Path(file).stem
+        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
 
-    # Save the raw data to a xlsx file
+    # Save the dataframes to a xlsx file
+    for file in files_for_analysis:
+        gc_io.save_dataframe_to_csv(file_df_mapping[pathlib.Path(file).stem], output_directory, pathlib.Path(file).stem)
 
-    # Analysis of the data
-    fill_growth_parameters(raw_data)
 
-    print("Creating figures")
-    # Graph the data and save the figures to the output_directory
-    create_single_well_graphs(raw_data, output_directory, "OD600[nm] against time[sec]")
+    # # Analysis of the data
+    # fill_growth_parameters(raw_data)
 
-    df_raw_data, df_wells_summary = create_data_tables(raw_data, output_directory)
+    # print("Creating figures")
+    # # Graph the data and save the figures to the output_directory
+    # create_single_well_graphs(raw_data, output_directory, "OD600[nm] against time[sec]")
 
-    df_raw_data.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
-    df_wells_summary.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
+    # df_raw_data, df_wells_summary = create_data_tables(raw_data, output_directory)
 
-    raw_data = get_csv_raw_data(input_directory)
-    variation_matrix = get_reps_variation_data(raw_data)
-    variation_matrix.to_csv(os.path.join(output_directory, f'{raw_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
-    averaged_rep = get_averaged_ExperimentData(raw_data)
-    create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
+    # df_raw_data.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
+    # df_wells_summary.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
 
-    save_err_log(output_directory, "Error log")
+    # raw_data = get_csv_raw_data(input_directory)
+    # variation_matrix = get_reps_variation_data(raw_data)
+    # variation_matrix.to_csv(os.path.join(output_directory, f'{raw_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
+    # averaged_rep = get_averaged_ExperimentData(raw_data)
+    # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 #IO
-def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
-    '''
-    Desrciption
-    -----------
-    Read all the data from the files with the given extension in the input directory given
-    
-    Parameters
-    ----------
-    input_directory : path object
-        The path to the folder where all the data we want to analyze is stored
-    extensions : (str, str, ...)
-        tuple with all the files with a given file extension we wish to include in the analysis
-    err_log : [str]
-        a refernce to the list containing all the previosuly logged errors
-    data_rows:
-        A list of all the names of the rows to be analysed, defaults to A to H as in a normal 96 well plate
-  
-
-    Returns
-    -------
-    ExperimentData object
-    '''
-
-    # The container of the data
-    parsed_data = []
-
-    # retrive all the data files by extesions from the In directory
-    excel_files_paths = get_files_from_directory(input_directory, extensions)
-
-    # Loop excel_files_locations list to read all the relevant files
-    for excel_file_location in excel_files_paths:
-        # Take the excel_file_location and use it to initiate an ExcelFile object as the context
-        with pd.ExcelFile(excel_file_location) as excel_file:
-            # Loop all the sheets in the file
-            for sheet in excel_file.sheet_names:
-                try:
-                    # Get the name of the current file. The last part of the path then remove the file extension
-                    curr_file_name = pathlib.Path(excel_file_location).stem
-                    
-                    # Create a new object to save data into
-                    parsed_data.append(ExperimentData(plate_name=sheet, file_name=curr_file_name))
-
-                    # Load the current sheet of the excel file
-                    df = pd.read_excel(excel_file, sheet)
-                    
-
-                    # run tourgh all the rows and columns and save the data into object for graphing later
-                    # We use 96 well plates but only use the inner wells. That is, we treat the 96 well as a 60 well (6 X 10)
-                    for row in df.itertuples():
-                        # save the time of reading from the start of the experiment in seconds
-                        if row[1] == "Time [s]":
-                            parsed_data[-1].times.append(row[2] / 3600)
-                        # save the temperature at the time of reading
-                        elif row[1] == "Temp. [°C]":
-                            parsed_data[-1].temps.append(row[2])
-                        # save the OD of the well
-                        
-                        elif row[1] in data_rows:
-                            # Convert the character index to numaric index to be used to insert under the desired key in ODs
-                            # 66 is the ASCII value of B and afterwards all the values are sequencial
-                            row_index = ord(row[1]) - 66
-
-                            # This offset comes from the fact that in this expiremnt we don't right-most column and the index given by itertuples
-                            LEFT_OFFSET = 1
-                            # Push all the values in the list with the needed change set by the LEFT_OFFSET
-                            data_columns_offset = [column_index + LEFT_OFFSET for column_index in data_columns]
-                            # Collect all values from the columns to ODs
-                            for i in data_columns_offset:
-                                # i is the index of the relevant cell within the excel sheet j is the adjusted value to make it zero based index to be used when saving to ODs
-                                j = i - LEFT_OFFSET
-                                curr_well = (row_index, j)
-                                if curr_well not in parsed_data[-1].wells:
-                                    parsed_data[-1].wells[curr_well] = WellData(is_valid=False, ODs=[row[i]])
-                                # There is a previous reading for this cell, therefore normalize it against the first read then save it
-                                else:
-                                    if row[i] == "OVER":
-                                        raise ValueError(f'a measurement with the value of OVER is in cell {str(((row[1]), j + LEFT_OFFSET))} at sheet: {sheet} please fix and try again')
-                                    else:
-                                        parsed_data[-1].wells[curr_well].ODs.append(row[i] - parsed_data[-1].wells[curr_well].ODs[0])
-                except Exception as e:
-                    print(str(e))
-                    #f"data read at sheet {sheet} at file {curr_file_name} failed with the following exception mesaage: {str(e)}")
-    # Zero out all the first ODs since normalization was done in relation to them and it's finished, therefore they need to be set to 0
-    for experiment_data in parsed_data:
-        for row_index, column_index in experiment_data.wells:
-            experiment_data.wells[(row_index, column_index)].ODs[0] = 0
-    
-    return parsed_data
-
 def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read the data from the previously exported csv with the given extension in the input directory given
     
@@ -754,8 +669,6 @@ def flag_invalid_replicates(reps_data):
     return invalid_replicates
 
 #Utils
-
-
 def create_tidy_dataframe_list(data):
     '''Creates a tidy complient pandas dataset that will later by analyzed by curveball.
 
@@ -802,10 +715,6 @@ def convert_wellkey_to_text(key):
     str
     '''
     return chr(key[0] + 66) + str(key[1])
-
-def save_err_log(path, name, err_log):
-    with open(path + "/" + name + ".txt", 'w') as file:
-        file.writelines("% s\n" % line for line in err_log)
 
 if __name__ == "__main__":
     main()
