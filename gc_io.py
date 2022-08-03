@@ -4,7 +4,6 @@ import pathlib
 import numpy as np
 import pandas as pd
 
-
 import gc_utils
 
 # gc prefix added to avoid name conflict with other modules
@@ -128,7 +127,6 @@ def save_dataframe_to_csv(df, output_file_path, file_name):
     file_path_with_file_name = os.path.join(output_file_path, f'{file_name}.csv')
     # Save the dataframe a csv file
     df.to_csv(file_path_with_file_name, index=False)
-    print(f"Saved data to file {file_path_with_file_name}")
     return file_path_with_file_name
 
 def create_directory(output_directory, nested_directory_name):
@@ -149,5 +147,4 @@ def create_directory(output_directory, nested_directory_name):
     # Create the directory if it does not exist
     if not os.path.isdir(new_dir_path):
         os.mkdir(new_dir_path)
-    return new_dir_path
-    
+    return new_dir_path  
