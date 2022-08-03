@@ -1,4 +1,4 @@
-from ast import parse
+import os
 import logging
 import pathlib
 import numpy as np
@@ -14,7 +14,7 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
     '''
     Desrciption
     -----------
-    Read the content of a xlsx file from a tecan stakcer format
+    Read the content of a xlsx file in a tecan stakcer format
     
     Parameters
     ----------
@@ -105,4 +105,49 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
                                     curr_index += 1
     # Create a dataframe from the numpy array and returrn it
     df = pd.DataFrame(data, columns=["filename", "plate", "well", "time", "OD", "temperature"])
-    return df.astype({ 'filename': str, 'plate': str, 'well': str, 'time': float, 'OD': float, 'temperature': float })
+    df = df.astype({ 'filename': str, 'plate': str, 'well': str, 'time': float, 'OD': float, 'temperature': float })
+    # Make sure there are no empty rows in the dataframe
+    return df.dropna()
+
+def save_dataframe_to_csv(df, output_file_path, file_name):
+    '''
+    Description
+    -----------
+    Save a dataframe to a csv file
+    
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        The dataframe to be saved
+    output_file_path : str
+        The path to the folder where the csv file will be saved
+    file_name : str
+        The name of the csv file, supply the value of the file name without the extension
+    '''
+    #Create the output file path with the file name and extension
+    file_path_with_file_name = os.path.join(output_file_path, f'{file_name}.csv')
+    # Save the dataframe a csv file
+    df.to_csv(file_path_with_file_name, index=False)
+    print(f"Saved data to file {file_path_with_file_name}")
+    return file_path_with_file_name
+
+def create_directory(output_directory, nested_directory_name):
+    '''
+    Description
+    -----------
+    Create a directory if it does not exist
+    
+    Parameters
+    ----------
+    output_directory : str
+        The path to the output directory
+    nested_directory_name : str
+        The name of the nested directory to be created
+    '''
+    # Create the output directory path
+    new_dir_path = os.path.join(output_directory, nested_directory_name)
+    # Create the directory if it does not exist
+    if not os.path.isdir(new_dir_path):
+        os.mkdir(new_dir_path)
+    return new_dir_path
+    
