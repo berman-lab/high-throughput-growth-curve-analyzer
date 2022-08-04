@@ -106,7 +106,9 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
     df = pd.DataFrame(data, columns=["filename", "plate", "well", "time", "OD", "temperature"])
     df = df.astype({ 'filename': str, 'plate': str, 'well': str, 'time': float, 'OD': float, 'temperature': float })
     # Make sure there are no empty rows in the dataframe
-    return df.dropna()
+    df = df.dropna()
+    # Index the dataframe by the filename, plate and well and return
+    return df.set_index(["filename", "plate", "well"])
 
 def save_dataframe_to_csv(df, output_file_path, file_name):
     '''
