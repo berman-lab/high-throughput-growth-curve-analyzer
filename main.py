@@ -52,12 +52,11 @@ def main():
     # Add all the file names as keys to the dictionary and save the data in the dictionary
     for file in files_for_analysis:
         current_file_name = pathlib.Path(file).stem
-        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11] )
+        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        # Save the dataframes to a csv file
+        gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, current_file_name)
 
-    # Save the dataframes to a xlsx file
-    for file in files_for_analysis:
-        gc_io.save_dataframe_to_csv(file_df_mapping[pathlib.Path(file).stem], output_directory, pathlib.Path(file).stem)
-
+    print("Exported raw data to csv")
 
     # # Analysis of the data
     # fill_growth_parameters(raw_data)
