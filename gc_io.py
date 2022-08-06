@@ -108,13 +108,15 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
     # Make sure there are no empty rows in the dataframe
     df = df.dropna()
     # Index the dataframe by the filename, plate and well and return
-    return df.set_index(["filename", "plate", "well"])
+    df.set_index(["filename", "plate", "well"], inplace=True)
+    # Sort the index
+    return df.sort_index()
 
 def save_dataframe_to_csv(df, output_file_path, file_name):
     '''
     Description
     -----------
-    Save a dataframe to a csv file
+    Save a dataframe to a csv file with the indexes
     
     Parameters
     ----------
@@ -128,7 +130,7 @@ def save_dataframe_to_csv(df, output_file_path, file_name):
     #Create the output file path with the file name and extension
     file_path_with_file_name = os.path.join(output_file_path, f'{file_name}.csv')
     # Save the dataframe a csv file
-    df.to_csv(file_path_with_file_name, index=False)
+    df.to_csv(file_path_with_file_name, index=True)
     return file_path_with_file_name
 
 def create_directory(output_directory, nested_directory_name):
