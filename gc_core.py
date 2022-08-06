@@ -1,3 +1,6 @@
+import pandas as pd
+import concurrent.futures
+
 def get_experiment_growth_parameters(df):
     '''
     Desrciption
@@ -13,7 +16,8 @@ def get_experiment_growth_parameters(df):
         - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column. [required]
         - ``time`` (:py:class:`float`, in hours): [required]
         - ``OD`` (:py:class:`float`, in AU): [required]
-        - ``temperature`` (:py:class:`float` in celcius): [optional]
+        - ``temperature`` (:py:class:`float`, in celcius): [optional]
+    
     Returns
     -------
     pandas.DataFrame
@@ -29,9 +33,24 @@ def get_experiment_growth_parameters(df):
         - ``max_population_gr_slope`` (:py:class:`float`): The slope of the maximum population growth rate (abbreviated as gr).
         - ``exponet_end_time`` (:py:class:`float`, in hours): The time at which the exponential phase ended, defined
     '''
+    # Get all the filenames, platenames and wellnames from the dataframe to iterate over
+    # filename + platename + wellname are the keys by which the df is indexed
+    file_names = df['filename'].unique()
+    plate_names = df['plate'].unique()
+    well_names = df['well'].unique()
+    
+    # Genrate a list of all the keys to run _get_well_growth_parameters on using ProcessPoolExecutor
+    # A reference to the dataframe is added to the keys list so from it can be used in the function along with the other parameters
+    keys = []
+    for file_name in file_names:
+        for plate_name in plate_names:
+            for well_name in well_names:
+                keys.append((df, file_name, plate_name, well_name))
+                    
+    # Get all growth parameters for each well asynchronously using ProcessPoolExecutor
     return 1
 
-def _get_well_growth_parameters(df):
+def _get_well_growth_parameters(df, file_name, plate_name, well_name):
     '''
     Desrciption
     -----------
@@ -43,6 +62,13 @@ def _get_well_growth_parameters(df):
         A Dataframe containing all OD measurement for the well with the time of measurement . columns:
         - ``Time`` (:py:class:`float`, in hours)
         - ``OD`` (:py:class:`float`, in AU)
+    file_name : str
+        The name of the file that is being analysed.
+    plate_name : str
+        The name of the plate being analysed.
+    well_name : str
+        The well name, a letter for the row and a number of the column.
+    
     Returns
     -------
     pandas.Series
@@ -60,4 +86,5 @@ def _get_well_growth_parameters(df):
         - ``exponet_end_OD`` (:py:class:`float`, in AU): The OD at which the exponential phase ended (95% of the carrying capcity, K, first observed).
         - ``max_population_density`` (:py:class:`float`, in AU): The OD value determined to be the carrying capacity, K.
     '''
+    well_data = df.xs((file_name, plate_name, well_name), level=['filename', 'plate', 'well'])
     return 1
