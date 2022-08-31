@@ -33,11 +33,12 @@ def get_experiment_growth_parameters(df):
         - ``max_population_gr_slope`` (:py:class:`float`): The slope of the maximum population growth rate (abbreviated as gr).
         - ``exponet_end_time`` (:py:class:`float`, in hours): The time at which the exponential phase ended, defined
     '''
+    df_unindexed = df.reset_index()
     # Get all the filenames, platenames and wellnames from the dataframe to iterate over
     # filename + platename + wellname are the keys by which the df is indexed
-    file_names = df['filename'].unique()
-    plate_names = df['plate'].unique()
-    well_names = df['well'].unique()
+    file_names = df_unindexed['filename'].unique()
+    plate_names = df_unindexed['plate'].unique()
+    well_names = df_unindexed['well'].unique()
     
     # Genrate a list of all the keys to run _get_well_growth_parameters on using ProcessPoolExecutor
     # A reference to the dataframe is added to the keys list so from it can be used in the function along with the other parameters
