@@ -10,7 +10,9 @@ from scipy import signal
 import matplotlib.pyplot as plt
 
 import gc_io
+import gc_core
 import gc_utils
+
 
 def main():
     # Base config and program parametrs
@@ -57,6 +59,10 @@ def main():
         gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, current_file_name)
 
     print("Exported raw data to csv")
+
+    # Caclulate growth parameters
+    for file_name in file_df_mapping:
+        gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
 
     # # Analysis of the data
     # fill_growth_parameters(raw_data)
