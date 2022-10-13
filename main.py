@@ -83,6 +83,7 @@ def main():
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 #IO
+# Not in use anymore, to be removed in the future
 def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
     '''Read the data from the previously exported csv with the given extension in the input directory given
     
