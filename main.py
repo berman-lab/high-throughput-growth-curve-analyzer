@@ -1,7 +1,7 @@
 import os
+import time
 import logging
 import pathlib
-import curveball
 import itertools
 import matplotlib
 import numpy as np
@@ -16,7 +16,15 @@ import gc_utils
 
 def main():
     # Base config and program parametrs
-    base_path = os.path.normcase("c:\Data\\bio-graphs")
+    # MacOS default path
+    base_path = "/Users/Shared/Data/bio-graphs"
+
+    # Check if the system is running on windows, if yes then set base_path to the windows default path
+    if os.name in ('nt', 'dos'):
+        base_path = "c:\Data\\bio-graphs"
+    
+    # Make path string into a path object
+    base_path = os.path.normcase(base_path)
     # Input directory
     input_directory = os.path.join(base_path, "In")
     # Output directory
@@ -56,16 +64,17 @@ def main():
         current_file_name = pathlib.Path(file).stem
         file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
         # Save the dataframes to a csv file
-        gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, current_file_name)
+        gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, f'{current_file_name}_raw_data')
 
     print("Exported raw data to csv")
 
-    # Caclulate growth parameters
+    summary_dfs = {}
+    # Caclulate growth parameters for each experiment
     for file_name in file_df_mapping:
-        gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
+        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
+        gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_directory, f'{file_name}_summary_data')
 
-    # # Analysis of the data
-    # fill_growth_parameters(raw_data)
+    print("Finished calculating growth parameters")
 
     # print("Creating figures")
     # # Graph the data and save the figures to the output_directory
@@ -83,129 +92,6 @@ def main():
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 #IO
-# Not in use anymore, to be removed in the future
-def get_csv_raw_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
-    '''Read the data from the previously exported csv with the given extension in the input directory given
-    
-     Parameters
-    ----------
-    input_directory : path object
-        The path to the folder where all the data we want to analyze is stored
-    extensions : (str, str, ...)
-        tuple with all the files with a given file extension we wish to include in the analysis
-    err_log : [str]
-        a refernce to the list containing all the previosuly logged errors
-    data_rows:
-        A list of all the names of the rows to be analysed, defaults to A to H as in a normal 96 well plate
-  
-
-    Returns
-    -------
-    ExperimentData object
-    '''
-    # list of the data as expremint_data objects
-    parsed_data = []
-    # Save all the data from a replicate into
-    rep_data = []
-    
-    csvs_input_paths = get_files_from_directory(input_directory, extensions)
-    # Get all csv files with 'raw_data' in their name
-    csv_raw_data_paths = list(filter(lambda file_name: 'raw_data' in file_name, csvs_input_paths))
-    csv_summary_paths = list(filter(lambda file_name: 'summary' in file_name, csvs_input_paths))
-
-    # Load all summary csvs into one data frame
-    summary_csvs = []
-    for csv_summary_path in csv_summary_paths:
-        summary_csvs.append(pd.read_csv(csv_summary_path))
-
-    summary_csvs = pd.concat(summary_csvs, ignore_index=True, sort=False)   
-    summary_csvs["plate"] = summary_csvs["plate"].str.lower()
-    # Save all plate names
-    plate_names = pd.unique(summary_csvs['plate'])
-    file_names = pd.unique(summary_csvs['filename'])
-
-    # get the amount of plates in the first experiment
-    plate_count = len(pd.unique(summary_csvs.loc[summary_csvs['filename'] == summary_csvs['filename'][0]]['plate']))
-
-    #Check if there are too many plates, i.e not the same names between replicates
-    if len(plate_names) > plate_count:
-        add_line_to_error_log(err_log, 'Too many plates in summary_csvs, please make sure all experiment excel files have the same sheet names in them')
-        raise ValueError(f'Too many plates in summary_csvs, please make sure all experiment excel files have the same sheet names in them')
-
-    # Check if there are too many filenames inside the dataframe
-    if len(file_names) != len(csv_summary_paths):
-        add_line_to_error_log(err_log, 'Too many file names in summary_csvs')
-        raise ValueError(f'Too many file names in summary_csvs')
-
-    # go through the csvs and move the data into parsed_data
-    for i, raw_csv_file_location in enumerate(csv_raw_data_paths):
-        rep_data = []
-
-        current_csv = pd.read_csv(raw_csv_file_location)
-        current_csv['plate'] = current_csv['plate'].str.lower()
-
-        for plate in plate_names:
-            curr_plate_raw_data = current_csv.loc[current_csv['plate'] == plate]
-
-            # All wells in the same plate have the same times and temperatures, therefore get the data with the first well the user specified
-            curr_plate_first_well_df = curr_plate_raw_data.loc[curr_plate_raw_data['well'] == f'{data_rows[0]}{data_columns[0]}']
-            plate_measurements_times = list(curr_plate_first_well_df['time'])
-            plate_temps = list(curr_plate_first_well_df['temperature'])
-            
-            plate_data = ExperimentData(times = plate_measurements_times, temps = plate_temps, plate_name = plate, file_name = file_names[i])
-
-            for row in data_rows:
-                for col in data_columns:
-                    curr_well = (convert_letter_to_wellkey(row), col)
-                    well_key_as_text = row + str(col)
-
-                    # if any well from the replicates was invalid, that is there is an invalid well from the same plate
-                    if summary_csvs.loc[(summary_csvs['well'] == well_key_as_text) & (summary_csvs['plate'] == plate) & (summary_csvs['valid'] == 'False')].empty == False:
-                        add_line_to_error_log(err_log, f"Well {well_key_as_text} at plate {plate} is invalid and was left out of the graph generation")
-                    else:
-                        well_summary_data = summary_csvs.loc[(summary_csvs['well'] == well_key_as_text) & (summary_csvs['plate'] == plate) & (summary_csvs['filename'] == file_names[i])].squeeze()
-                        # Prep the well data to add to the ExperimentData object
-                        well_raw_data = curr_plate_raw_data.loc[(curr_plate_raw_data['well'] == well_key_as_text) &
-                                                                (curr_plate_raw_data['plate'] == plate) &
-                                                                (curr_plate_raw_data['filename'] == file_names[i])
-                                                            ]
-                        ODs = list(well_raw_data['OD'])
-                        exponent_begin = (well_summary_data["exponent_begin_time"], well_summary_data["exponent_begin_OD"])
-                        max_population_gr = (well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"])
-                        exponent_end = (well_summary_data["Time_95%(exp_end)"], well_summary_data["OD_95%"])
-                        max_population_density = well_summary_data["max_population_density"]
-                        isvalid = well_summary_data["valid"]
-                        plate_data.wells[curr_well] = WellData(is_valid = isvalid, ODs = ODs, exponent_begin = exponent_begin, max_population_gr = max_population_gr,
-                        exponent_end = exponent_end, max_population_density = max_population_density)
-            rep_data.append(plate_data)
-            
-        parsed_data.append(rep_data)
-
-    # Check that all replicates have the same amount of plates
-    if not all(len(rep_data) == len(parsed_data[0]) for rep_data in parsed_data):
-        raise ValueError(f'Not all replicates have the same amount of plates in them')
-    
-    # Trim all lists to the same length
-    # Find the min ODs length for the well in all replicates and all the lists should conform to this value
-    key = list(parsed_data[0][0].wells)[0]
-    min_ODs_len = len(parsed_data[0][0].wells[key].ODs)    
-    for i in range(0, len(parsed_data)):
-        for key in parsed_data[i][0].wells:
-            for plate in parsed_data[i]:
-                tmp_len = len(plate.wells[key].ODs)
-                if tmp_len < min_ODs_len:
-                    min_ODs_len = tmp_len
-    
-    # Use the value to trim all the lists to the same length
-    for replicate_data in parsed_data:
-        for plate in replicate_data:
-            plate.times = plate.times[:min_ODs_len]
-            plate.temps = plate.temps[:min_ODs_len]
-            for key in plate.wells:
-                plate.wells[key].ODs = plate.wells[key].ODs[:min_ODs_len]
-
-    return parsed_data
-
 def create_single_well_graphs(data, output_path, title, err_log, decimal_percision, draw_95=True):
     '''Create graphs from the data collected in previous steps
     Parameters
@@ -323,83 +209,6 @@ def create_reps_avarage_graphs(reps, averaged_reps, output_path):
             # Save the figure
             fig.savefig(os.path.join(output_path, f"Average of wells {convert_wellkey_to_text(key)} in {reps[j][i].plate_name}"))
             plt.close('all')
-
-#Fitting
-def fill_growth_parameters(data, err_log):
-    '''
-    Train a model and fill fields in the ExperimentData list given
-    Parameters
-    ----------
-    data : ExperimentData object
-        All the data from the expriment
-    Returns
-    -------
-    null
-
-    Examples
-    --------   
-    >>> get_growth_parameters(parsed_data, err_log)    
-    '''
-    tidy_df_list = create_tidy_dataframe_list(data)
-
-    # Use to retrive the needed data in the previosly created dataframe
-    plate_num = 0
-    models_trained = 1
-    models_to_train = len(data) * 60
-
-    # Loop all plates
-    for experiment_data in data:
-
-        utils.clear_console()
-        print(f"Started training in {experiment_data.plate_name}")
-
-        # Loop all ODs within each plate and train model
-        for key in experiment_data.wells:
-            try:
-                # Progress indicator
-                print()
-                print(f"Started training model: {str(models_trained)} out of: {str(models_to_train)}")
-                
-                # keep the refrence to the current well for reuse
-                curr_well = experiment_data.wells[key]
-
-                # Fit a function with a lag phase to the data
-                current_lag_model = curveball.models.fit_model(tidy_df_list[plate_num][key], PLOT=False)
-                
-                # Find the length of the lag phase (also the begining of the exponent phase) using the previously fitted functions
-                exponent_begin_time = curveball.models.find_lag(current_lag_model[0])
-                exponent_begin_OD = np.interp(exponent_begin_time, experiment_data.times, curr_well.ODs)
-
-                # Save the carrying capacity of the population as determined by the model
-                max_population_density = current_lag_model[0].init_params["K"].value
-                
-                # 95% of growth as an indication of the end of the rapid growth phase
-                max_population_density_95 = max_population_density * 0.95
-                # Find the first time at which the ovserved OD values exceeded 95%
-                max_population_density_95_time = experiment_data.times[np.searchsorted(curr_well.ODs, max_population_density_95).T]
-                
-                # prep for saving
-                exponet_end = (max_population_density_95_time, max_population_density_95)
-                
-                # Max slope calculation
-                # Get the time and OD of the point with the max slope
-                t1, y1, max_slope, t2, y2, mu = curveball.models.find_max_growth(current_lag_model[0])                
-                
-                # Save model estimations to fields in the object
-                curr_well.exponent_begin = (exponent_begin_time, exponent_begin_OD)
-                curr_well.max_population_gr = (t1, y1, max_slope)
-                curr_well.exponent_end = exponet_end
-                curr_well.max_population_density= max_population_density
-
-                curr_well.is_valid = True
-
-                models_trained += 1
-                
-            except Exception as e:
-                print(str(e))
-                #f"Fitting of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
-    
-        plate_num += 1
 
 # QA fuctions
 def get_reps_variation_data(reps_data):
@@ -532,37 +341,6 @@ def flag_invalid_replicates(reps_data):
                     invalid_replicates.append((i, j, key))
     return invalid_replicates
 
-#Utils
-def create_tidy_dataframe_list(data):
-    '''Creates a tidy complient pandas dataset that will later by analyzed by curveball.
-
-    Parameters
-    ----------
-    data : ExperimentData object
-        All the data from the expriment
-
-    Returns
-    -------
-    list[{(int, int) : pandas.DataFrame}]
-
-    Examples
-    --------   
-    >>> tidy_df_list = create_tidy_dataframe_list(parsed_data)
-    '''
-    # List of dictionaries of dataframes with a key of (row_index, column_index) for each well in each plate
-    result = []
-
-    # Loop through all plates and collect the data in a way that is analyzeable by curveball down the line
-    for experiment_data in data:
-        # Create an empty dictionary to hold 
-        result.append({})
-        for key in experiment_data.wells:
-            # Create the dictionary that will be converted to the dataframe
-            d = {'Time': experiment_data.times, 'OD': experiment_data.wells[key].ODs, 'Temp[°C]': experiment_data.temps}
-            result[-1][key] = pd.DataFrame(data=d)
-
-    return result
-
 def convert_letter_to_wellkey(letter):
     return ord(letter) - 66
 
@@ -581,4 +359,8 @@ def convert_wellkey_to_text(key):
     return chr(key[0] + 66) + str(key[1])
 
 if __name__ == "__main__":
+    start_time = time.time()
     main()
+    passed_time = time.time() - start_time
+    print(f"It took {passed_time}")
+    
