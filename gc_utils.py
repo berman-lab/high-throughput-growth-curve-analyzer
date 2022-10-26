@@ -28,3 +28,9 @@ def get_max_cycle_number(df):
     for i in range(len(first_column) -1, -1, -1):
         if first_column[i] == "Cycle Nr.":
             return df.iloc[i,1]
+
+def get_first_index(iterable, condition=lambda x: True):
+    '''Get the index of the first element in an iterable that matches the condition'''
+    for i, x in enumerate(iterable):
+        if condition(x):
+            return i
