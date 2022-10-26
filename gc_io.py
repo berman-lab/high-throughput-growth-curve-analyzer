@@ -103,8 +103,8 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
                                     # Increase the index tracking the current insertion into the numpy array
                                     curr_index += 1
     # Create a dataframe from the numpy array and returrn it
-    df = pd.DataFrame(data, columns=["filename", "plate", "well", "time", "OD", "temperature"])
-    df = df.astype({ 'filename': str, 'plate': str, 'well': str, 'time': float, 'OD': float, 'temperature': float })
+    df = pd.DataFrame(data, columns=["filename", "plate", "well", "Time", "OD", "temperature"])
+    df = df.astype({ 'filename': str, 'plate': str, 'well': str, 'Time': float, 'OD': float, 'temperature': float })
     # Make sure there are no empty rows in the dataframe
     df = df.dropna()
     # Index the dataframe by the filename, plate and well and return
