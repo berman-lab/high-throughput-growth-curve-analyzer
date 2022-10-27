@@ -34,3 +34,4 @@ __pycache__/gc_utils.cpython-310.pyc
 .vscode/launch.json
 __pycache__/gc_core.cpython-310.pyc
 __pycache__/main.cpython-310.pyc
+.DS_Store
