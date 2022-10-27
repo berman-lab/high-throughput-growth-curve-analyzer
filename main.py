@@ -1,3 +1,4 @@
+from fileinput import filename
 import os
 import time
 import logging
@@ -7,7 +8,6 @@ import matplotlib
 import numpy as np
 import pandas as pd
 from scipy import signal
-import matplotlib.pyplot as plt
 
 import gc_io
 import gc_core
@@ -63,6 +63,7 @@ def main():
     for file in files_for_analysis:
         current_file_name = pathlib.Path(file).stem
         file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        #file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B"], data_columns=[2])
         # Save the dataframes to a csv file
         gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, f'{current_file_name}_raw_data')
 
@@ -70,20 +71,21 @@ def main():
 
     summary_dfs = {}
     # Caclulate growth parameters for each experiment
-    for file_name in file_df_mapping:
-        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
-        gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_directory, f'{file_name}_summary_data')
+    for filename in file_df_mapping:
+        summary_dfs[filename] = gc_core.get_experiment_growth_parameters(file_df_mapping[filename])
+        gc_io.save_dataframe_to_csv(summary_dfs[filename], output_directory, f'{filename}_summary_data')
 
     print("Finished calculating growth parameters")
 
-    # print("Creating figures")
-    # # Graph the data and save the figures to the output_directory
-    # create_single_well_graphs(raw_data, output_directory, "OD600[nm] against time[sec]")
+    print("Creating figures")
+    # Graph the data and save the figures to the output_directory
+    for filename in file_df_mapping:
+        well_save_path = f'{filename} single well graphs'
+        gc_io.create_directory(output_directory, well_save_path)
+        graphs_output_path = os.path.join(output_directory, well_save_path)
+        gc_io.create_single_well_graphs(filename, file_df_mapping[filename], summary_dfs[filename], graphs_output_path, "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
 
     # df_raw_data, df_wells_summary = create_data_tables(raw_data, output_directory)
-
-    # df_raw_data.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_raw_data.csv'), index=False, encoding='utf-8')
-    # df_wells_summary.to_csv(os.path.join(output_directory, f'{raw_data[0].file_name}_summary.csv'), index=False, encoding='utf-8')
 
     # raw_data = get_csv_raw_data(input_directory)
     # variation_matrix = get_reps_variation_data(raw_data)
@@ -92,87 +94,6 @@ def main():
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 #IO
-def create_single_well_graphs(data, output_path, title, err_log, decimal_percision, draw_95=True):
-    '''Create graphs from the data collected in previous steps
-    Parameters
-    ----------
-    data : ExperimentData object
-        All the data from the expriment
-    output_path : str
-        path to the file into which the graphes will be saved to
-    title: str
-        The title for the graphs
-    err_log: [str]
-        a refernce to the list containing all the previosuly logged errors
-    decimal_percision: int
-        The amount of digits after the decimal point to show in the labels
-    Returns
-    -------
-    null
-
-    Examples
-    --------   
-    >>> create_graphs(parsed_data, "Root/Folder/where_we_want_grpahs_to_be_saved_into")    
-    '''
-    
-    # Styles
-    point_size = 50
-    alpha = 0.6
-
-    # Loop all plates
-    for experiment_data in data:
-        # Loop all ODs within each plate
-        for key in experiment_data.wells:
-            
-            try:
-                # Setup axis and the figure objects
-                fig, ax = plt.subplots()
-                ax.set_title(title)
-                ax.set_xlabel('Time [hours]')
-                ax.set_ylabel('OD600')
-
-                # Plot the main graph
-                ax.plot(experiment_data.times, experiment_data.wells[key].ODs)
-
-                # If the well is valid graph it with the data from the fitting procedure, otherwise only graph time vs OD as an aid for seeing what went wrong
-                curr_well = experiment_data.wells[key]
-                if curr_well.is_valid:
-                    # Max OD plotting
-                    max_OD = experiment_data.wells[key].max_population_density
-                    ax.axhline(y=max_OD, color='black', linestyle=':', label=f'Carrying capacity: {str(round(max_OD, decimal_percision))}')
-
-                    # End of lag phase plotting
-                    exponent_begin_time, exponent_begin_OD = experiment_data.wells[key].exponent_begin
-                    # plot the point with the label
-                    ax.scatter([exponent_begin_time], [exponent_begin_OD], s=point_size ,alpha=alpha, 
-                                label= f'end of leg phase: {str(round(exponent_begin_time, decimal_percision))} hours')
-
-                    # End of exponential phase
-                    if draw_95:
-                        time_95, OD_95 = experiment_data.wells[key].exponent_end
-                        # plot the point with the label
-                        ax.scatter([time_95], [OD_95], c=["darkgreen"], s=point_size ,alpha=alpha,
-                                    label=f'95% of growth: {str(round(time_95, decimal_percision))} hours')                        
-
-                    # Max population growth rate plotting
-                    x, y, slope = experiment_data.wells[key].max_population_gr
-                    # Plot the point and the linear function matching the max population growth rate
-                    ax.axline((x, y), slope=slope, color='firebrick', linestyle=':', label=f'maximum population growth rate: {str(round(slope, decimal_percision))}')
-                    # plot the point on the graph at which this occures
-                    ax.scatter([x], [y], c=['firebrick'], s=point_size, alpha=alpha)
-
-                    ax.legend(loc="lower right")
-                
-                # Save the figure
-                fig.savefig(os.path.join(output_path, f"well {convert_wellkey_to_text(key)} from {experiment_data.plate_name} in {experiment_data.file_name}"))
-                
-            except Exception as e:
-                print(str(e))
-                add_line_to_error_log(err_log,
-                f"Graphing of cell {convert_wellkey_to_text(key)} at plate: {experiment_data.plate_name} failed with the following exception mesaage: {str(e)}")
-            finally:
-                plt.close('all')
-
 def create_reps_avarage_graphs(reps, averaged_reps, output_path):
     '''
     Create graphs from the data collected in previous steps
@@ -340,23 +261,6 @@ def flag_invalid_replicates(reps_data):
                 if reps_data[i][j].wells[key].is_valid == False:
                     invalid_replicates.append((i, j, key))
     return invalid_replicates
-
-def convert_letter_to_wellkey(letter):
-    return ord(letter) - 66
-
-def convert_wellkey_to_text(key):
-    '''Converts a tuple of type (int,int) back to the appropriate human readable index 
-
-    Parameters
-    ----------
-    key : (int,int)
-        The key index of the well location
-
-    Returns
-    -------
-    str
-    '''
-    return chr(key[0] + 66) + str(key[1])
 
 if __name__ == "__main__":
     start_time = time.time()
