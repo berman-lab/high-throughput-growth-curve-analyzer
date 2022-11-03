@@ -1,4 +1,4 @@
-import logging
+import os
 import curveball
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ def get_experiment_growth_parameters(df):
     ----------
     df : pandas.DataFrame
         A Dataframe containing all OD measurement for the well with the time of measurement . columns:
-        - ``filename`` (:py:class:`str`): the name of the file that is being analysed. [required]
+        - ``file_name`` (:py:class:`str`): the name of the file that is being analysed. [required]
         - ``plate`` (:py:class:`str`): the name of the plate being analysed. : [required]
         - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column. [required]
         - ``time`` (:py:class:`float`, in hours): [required]
@@ -28,7 +28,7 @@ def get_experiment_growth_parameters(df):
     -------
     pandas.DataFrame
         This dataframe will hold all the data gathered from the trained curveball models that were each fitted to a single well data. Dataframe containing the columns:
-        - ``filename`` (:py:class:`str`): the name of the file the well belongs to.
+        - ``file_name`` (:py:class:`str`): the name of the file the well belongs to.
         - ``plate`` (:py:class:`str`): the name of the plate being analysed.
         - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
         - ``is_valid`` (:py:class:`bool`): True if the well is has passed fitting, False if there was a problem and the fitting process wan't complete.
@@ -42,9 +42,9 @@ def get_experiment_growth_parameters(df):
         - ``carrying_capacity`` (:py:class:`float`, in AU): The OD value determined to be the carrying capacity, K.
     '''
     df_unindexed = df.reset_index()
-    # Get all the filenames, platenames and wellnames from the dataframe to iterate over
-    # filename + platename + wellname are the keys by which the df is indexed
-    file_names = df_unindexed['filename'].unique()
+    # Get all the file_names, platenames and wellnames from the dataframe to iterate over
+    # file_name + platename + wellname are the keys by which the df is indexed
+    file_names = df_unindexed['file_name'].unique()
     plate_names = df_unindexed['plate'].unique()
     well_names = df_unindexed['well'].unique()
     
@@ -64,20 +64,13 @@ def get_experiment_growth_parameters(df):
         results = list(executor.map(_get_well_growth_parameters, items))
 
     # # Convert results to a dataframe
-    results_df = pd.DataFrame(results, columns=['filename', 'plate', 'well', 'is_valid', 'lag_end_time', 'lag_end_OD',
+    results_df = pd.DataFrame(results, columns=['file_name', 'plate', 'well', 'is_valid', 'lag_end_time', 'lag_end_OD',
                                                 'max_population_gr_time', 'max_population_gr_OD', 'max_population_gr_slope',
                                                 'exponet_end_time', 'exponet_end_OD', 'carrying_capacity'])
 
-    results_df.set_index(["filename", "plate", "well"], inplace=True)
-
-    # results = []
-    # for item in items:
-    #     print(item[1] + ' ' + item[2] + ' ' + item[3])
-    #     results.append(_get_well_growth_parameters(item))
-
+    results_df.set_index(["file_name", "plate", "well"], inplace=True)
     return results_df.sort_index()
 
-#def _get_well_growth_parameters(df, file_name, plate_name, well_name):
 def _get_well_growth_parameters(item):
     '''
     Desrciption
@@ -103,7 +96,7 @@ def _get_well_growth_parameters(item):
     -------
     dictioanry
         Keys:
-        - ``filename`` (:py:class:`str`): the name of the file the well belongs to.
+        - ``file_name`` (:py:class:`str`): the name of the file the well belongs to.
         - ``plate`` (:py:class:`str`): the name of the plate being analysed.
         - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
         - ``is_valid`` (:py:class:`bool`): True if the well is has passed fitting, False if there was a problem and the fitting process wan't complete.
@@ -116,11 +109,13 @@ def _get_well_growth_parameters(item):
         - ``exponet_end_OD`` (:py:class:`float`, in AU): The OD at which the exponential phase ended (95% of the carrying capcity, K, first observed).
         - ``carrying_capacity`` (:py:class:`float`, in AU): The OD value determined to be the carrying capacity, K.
     '''
+    logger = gc_utils.get_logger()
+    
     df = item[0]
-    filename = item[1]
+    file_name = item[1]
     plate_name = item[2]
     well_name = item[3]
-    well_data = df.xs((filename, plate_name, well_name), level=['filename', 'plate', 'well'])
+    well_data = df.xs((file_name, plate_name, well_name), level=['file_name', 'plate', 'well'])
 
     well_valid = True
 
@@ -136,7 +131,7 @@ def _get_well_growth_parameters(item):
     if np.isnan(lag_end_time):
         lag_end_time = -1
         lag_end_OD = -1
-        logging.error(f'Exponenet begin time could not be estimated for well: {well_name} on plate: {plate_name} in file: {filename}')
+        logger.error(f'Exponenet begin time could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}')
         well_valid = False
     # if the exponent_begin_time is not nan then it means that the fitting was successful and the well data is valid, retriive the OD at the begining of the exponent phase
     else:
@@ -148,13 +143,13 @@ def _get_well_growth_parameters(item):
     #current_lag_model[0].find_K_ci()
     # If the value is less thatn 0.1 then the well is invalid since the cells probably didn't grow
     if carrying_capacity < 0.1:
-        logging.error(f'Carrying capacity is less than 0.1 for well: {well_name} on plate: {plate_name} in file: {filename}, check the well data to see if no growth occured')
+        logger.error(f'Carrying capacity is less than 0.1 for well: {well_name} on plate: {plate_name} in file: {file_name}, check the well data to see if no growth occured')
         carrying_capacity = -1
         exponet_end_OD = -1
         exponet_end_time = -1
         well_valid = False
     elif carrying_capacity >= max(well_data.OD):
-        logging.error(f'Carrying capacity was estimated to be: {carrying_capacity} on plate: {plate_name} in file: {filename}. This carrying capacity is larger than the maximum OD achived. The well might not have reached the stationary phase fully')
+        logger.error(f'Carrying capacity was estimated to be: {carrying_capacity} on plate: {plate_name} in file: {file_name}. This carrying capacity is larger than the maximum OD achived. The well might not have reached the stationary phase fully')
         carrying_capacity = -1
         exponet_end_OD = -1
         exponet_end_time = -1
@@ -171,11 +166,11 @@ def _get_well_growth_parameters(item):
     # Get the time and OD of the point with the max slope
     max_population_gr_time, max_population_gr_OD, max_population_gr_slope, t2, y2, mu = curveball.models.find_max_growth(best_model)                
     if np.isnan([max_population_gr_time, max_population_gr_OD, max_population_gr_slope]).any():
-        logging.error(f'Max slope could not be estimated for well: {well_name} on plate: {plate_name} in file: {filename}, this probably means that the cells in the well did not grow')
+        logger.error(f'Max slope could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}, this probably means that the cells in the well did not grow')
         max_population_gr_time = -1
         max_population_gr_OD = -1
         max_population_gr_slope = -1        
         well_valid = False
-    return {'filename': filename, 'plate': plate_name, 'well': well_name, 'is_valid': well_valid,
+    return {'file_name': file_name, 'plate': plate_name, 'well': well_name, 'is_valid': well_valid,
             'lag_end_time': lag_end_time, 'lag_end_OD': lag_end_OD, 'max_population_gr_time': max_population_gr_time, 'max_population_gr_OD': max_population_gr_OD, 'max_population_gr_slope': max_population_gr_slope,
             'exponet_end_time': exponet_end_time, 'exponet_end_OD': exponet_end_OD, 'carrying_capacity': carrying_capacity}
