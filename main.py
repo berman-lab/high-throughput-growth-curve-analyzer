@@ -1,10 +1,7 @@
-from fileinput import filename
 import os
 import time
-import logging
 import pathlib
 import itertools
-import matplotlib
 import numpy as np
 import pandas as pd
 from scipy import signal
@@ -42,19 +39,15 @@ def main():
 
     # The amount of digits after the decimal point to show in plots
     global DECIMAL_PERCISION_IN_PLOTS
-    DECIMAL_PERCISION_IN_PLOTS = 3
-
-    # Matplotlib backend mode - a non-interactive backend that can only write to files
-    # Before changing to this mode the program would crash after the creation of about 250 graphs
-    matplotlib.use("Agg")    
+    DECIMAL_PERCISION_IN_PLOTS = 3 
 
     # Get all the files from the input directory
     files_for_analysis = gc_utils.get_files_from_directory(input_directory, "xlsx")
     # Create a folder for the current analysis in the output directory based on the first file name and update the output directory variable to the new path
     output_directory = gc_io.create_directory(output_directory, pathlib.Path(files_for_analysis[0]).stem)
-    # Setup log file now that the specific output directory is known
-    logging.basicConfig(filename=f'{os.path.join(output_directory, "messages.log")}', filemode='w', encoding='utf-8', level=logging.DEBUG)
 
+    #Logging setup with the output directory as the save location of the log file
+    logger = gc_utils.get_logger(output_directory)
 
     # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
     file_df_mapping = {}
@@ -63,7 +56,6 @@ def main():
     for file in files_for_analysis:
         current_file_name = pathlib.Path(file).stem
         file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
-        #file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B"], data_columns=[2])
         # Save the dataframes to a csv file
         gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, f'{current_file_name}_raw_data')
 
@@ -71,19 +63,19 @@ def main():
 
     summary_dfs = {}
     # Caclulate growth parameters for each experiment
-    for filename in file_df_mapping:
-        summary_dfs[filename] = gc_core.get_experiment_growth_parameters(file_df_mapping[filename])
-        gc_io.save_dataframe_to_csv(summary_dfs[filename], output_directory, f'{filename}_summary_data')
+    for file_name in file_df_mapping:
+        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
+        gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_directory, f'{file_name}_summary_data')
 
     print("Finished calculating growth parameters")
 
     print("Creating figures")
     # Graph the data and save the figures to the output_directory
-    for filename in file_df_mapping:
-        well_save_path = f'{filename} single well graphs'
+    for file_name in file_df_mapping:
+        well_save_path = f'{file_name} single well graphs'
         gc_io.create_directory(output_directory, well_save_path)
         graphs_output_path = os.path.join(output_directory, well_save_path)
-        gc_io.create_single_well_graphs(filename, file_df_mapping[filename], summary_dfs[filename], graphs_output_path, "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
+        gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path, "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
 
     # df_raw_data, df_wells_summary = create_data_tables(raw_data, output_directory)
 
