@@ -1,7 +1,7 @@
 import os
-import logging
 import pathlib
 import itertools
+import matplotlib
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -10,6 +10,8 @@ import gc_utils
 
 # gc prefix added to avoid name conflict with other modules
 # This file contains all IO related functions
+
+
 
 def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", "G", "H"], data_columns=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]):
     '''
@@ -29,13 +31,16 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
     -------
     pandas.DataFrame
         The dataframe containing the data from the xlsx file. Data frame containing the columns:
-        - ``filename`` (:py:class:`str`): the name of the file that is being analysed.
+        - ``file_name`` (:py:class:`str`): the name of the file that is being analysed.
         - ``plate`` (:py:class:`str`): the name of the plate being analysed.
         - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
         - ``Time`` (:py:class:`float`, in hours)
         - ``OD`` (:py:class:`float`, in AU)
         - ``temperature`` (:py:class:`float` in celcius)
     '''
+    # Get logger object
+    logger = gc_utils.get_logger()
+
     # data will hold all the measurements form the current file
     data = None
     # Hold the index to hold the next measurement into the numpy array
@@ -84,7 +89,7 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
                             if row[current_column] == "OVER":
                                 err_msg = f'A measurement with the value of "OVER" is in cell {str(((row[0])))}{str(current_column)} at sheet: {sheet_name} in file: {current_file_name}'
                                 + ' please correct the invalid value and try rerunning the analysis'
-                                logging.critical(err_msg)
+                                logger.critical(err_msg)
                                 raise ValueError(err_msg)
                             else:
                                 # Check if a value has alredy been saved for the current well
@@ -94,23 +99,23 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
                                     initial_ODs[key] = row[current_column]
                                     # Save the OD of the current well and all other data attached to it in a new index in the data array
                                     # Since the first measurement is considered the "zero" is this experiment then set the OD value as 0
-                                    # Row order: filename, plate, well, time, OD, temperature
+                                    # Row order: file_name, plate, well, time, OD, temperature
                                     data[curr_index] = [current_file_name, sheet_name, key, cycle_time_in_hours, 0, cycle_temp]
                                     # Increase the index tracking the current insertion into the numpy array
                                     curr_index += 1
                                 else:
                                     # Save the OD of the current well and all other data attached to it in a new index in the data array and noramalize it
-                                    # Row order: filename, plate, well, time, OD, temperature
+                                    # Row order: file_name, plate, well, time, OD, temperature
                                     data[curr_index] = [current_file_name, sheet_name, key, cycle_time_in_hours, row[current_column] - initial_ODs[key], cycle_temp]
                                     # Increase the index tracking the current insertion into the numpy array
                                     curr_index += 1
     # Create a dataframe from the numpy array and returrn it
-    df = pd.DataFrame(data, columns=["filename", "plate", "well", "Time", "OD", "temperature"])
-    df = df.astype({ 'filename': str, 'plate': str, 'well': str, 'Time': float, 'OD': float, 'temperature': float })
+    df = pd.DataFrame(data, columns=["file_name", "plate", "well", "Time", "OD", "temperature"])
+    df = df.astype({ 'file_name': str, 'plate': str, 'well': str, 'Time': float, 'OD': float, 'temperature': float })
     # Make sure there are no empty rows in the dataframe
     df = df.dropna()
-    # Index the dataframe by the filename, plate and well and return
-    df.set_index(["filename", "plate", "well"], inplace=True)
+    # Index the dataframe by the file_name, plate and well and return
+    df.set_index(["file_name", "plate", "well"], inplace=True)
     # Sort the index
     return df.sort_index()
 
@@ -155,11 +160,11 @@ def create_directory(father_directory, nested_directory_name):
         os.mkdir(new_dir_path)
     return new_dir_path
 
-def create_single_well_graphs(filename ,raw_data, summary_data, output_path, title, decimal_percision):
+def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, title, decimal_percision):
     '''Create graphs from the data collected in previous steps for each well in the experiment
     Parameters
     ----------
-    filename : str
+    file_name : str
         The name of the file being processed. Will be used to prefix the output file names
     raw_data : pandas.DataFrame
         dataframe returned from the read_tecan_stacker_xlsx function or one with the same structure
@@ -176,21 +181,25 @@ def create_single_well_graphs(filename ,raw_data, summary_data, output_path, tit
     null
     '''
 
+    # Matplotlib backend mode - a non-interactive backend that can only write to files
+    # Before changing to this mode the program would crash after the creation of about 250 graphs
+    matplotlib.use("Agg")
+
     # Styles
     point_size = 50
     alpha = 0.6
 
     df_unindexed = raw_data.reset_index()
-    # Get all the filenames, platenames and wellnames from the dataframe to iterate over
-    # filename + platename + wellname are the keys by which the df is indexed
-    file_names = df_unindexed['filename'].unique()
+    # Get all the file_names, platenames and wellnames from the dataframe to iterate over
+    # file_name + platename + wellname are the keys by which the df is indexed
+    file_names = df_unindexed['file_name'].unique()
     plate_names = df_unindexed['plate'].unique()
     well_names = df_unindexed['well'].unique()
 
     
-    for filename ,plate_name, well_name in itertools.product(file_names ,plate_names, well_names):
-        well_raw_data = raw_data.xs((filename, plate_name, well_name), level=['filename', 'plate', 'well'])
-        well_summary_data = (summary_data.xs((filename, plate_name, well_name), level=['filename', 'plate', 'well'])).iloc[0,:]
+    for file_name ,plate_name, well_name in itertools.product(file_names ,plate_names, well_names):
+        well_raw_data = raw_data.xs((file_name, plate_name, well_name), level=['file_name', 'plate', 'well'])
+        well_summary_data = (summary_data.xs((file_name, plate_name, well_name), level=['file_name', 'plate', 'well'])).iloc[0,:]
         # Setup axis and the figure objects
         fig, ax = plt.subplots()
         ax.set_title(title)
@@ -223,8 +232,7 @@ def create_single_well_graphs(filename ,raw_data, summary_data, output_path, tit
             ax.axhline(y=carrying_capacity, color='black', linestyle=':', label=f'Carrying capacity: {(round(carrying_capacity, decimal_percision))}')
 
             ax.legend(loc="lower right")
-
-            plt.close("all")
         
         # Save the figure
-        fig.savefig(os.path.join(output_path, f"well {well_name} from {plate_name} in {filename}"))
+        fig.savefig(os.path.join(output_path, f"well {well_name} from {plate_name} in {file_name}"))
+        plt.close("all")

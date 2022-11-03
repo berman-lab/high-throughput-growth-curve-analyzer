@@ -1,7 +1,41 @@
 import os
+import logging
 
 # gc prefix added to avoid name conflict with other modules
 # This file contains all general utility functions
+
+# Single instance of the logger program wide
+global _gc_logger
+_gc_logger = None
+def get_logger(output_file_path = ''):
+    '''
+    Description
+    -----------
+    Get the logger object
+
+    Parameters
+    ----------
+    output_file_path : str
+        The path to the folder where the log file will be saved
+        only provide the path on the first call to this function, after that the path will be ignored since the logger is a singleton and will not allow a change of path
+    
+    Returns
+    -------
+    logger : logging.Logger
+        The logger object
+    '''
+
+    # Check if the logger is already initialized. If it isn't, initialize it and set _gc_logger to the logger object
+    global _gc_logger
+    if _gc_logger == None and output_file_path != '':
+        logger = logging.getLogger('gc')
+        logger.filemode = 'w'
+        logger.setLevel(logging.WARNING)
+        file_handler =logging.FileHandler(os.path.join(output_file_path, "messages.log"))
+        logger.addHandler(file_handler)
+        _gc_logger = logger
+
+    return _gc_logger
 
 def clear_console():
     command = 'clear'
