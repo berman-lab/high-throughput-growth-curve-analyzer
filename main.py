@@ -77,9 +77,6 @@ def main():
         graphs_output_path = os.path.join(output_directory, well_save_path)
         gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path, "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
 
-    # df_raw_data, df_wells_summary = create_data_tables(raw_data, output_directory)
-
-    # raw_data = get_csv_raw_data(input_directory)
     # variation_matrix = get_reps_variation_data(raw_data)
     # variation_matrix.to_csv(os.path.join(output_directory, f'{raw_data[0][0].file_name}_coupled_reps_data.csv'), index=False, encoding='utf-8')
     # averaged_rep = get_averaged_ExperimentData(raw_data)
