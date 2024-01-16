@@ -13,7 +13,7 @@ import gc_utils
 
 
 
-def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", "G", "H"], data_columns=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]):
+def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
     '''
     Desrciption
     -----------
@@ -23,36 +23,39 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
     ----------
     file_path : str
         The path to the folder where all the data for analysis is stored
-    data_rows : list of strings
-        The rows of the xlsx file that are to be read
-    data_columns : list of integers
-        The columns of the xlsx file that are to be read
+    plate_rows : list of strings
+        The rows of the plates to read data from
+    plate_columns : list of integers
+        The columns of the plates to read data from
+    log : list
+        The list to which the log messages will be appended
     Returns
     -------
     pandas.DataFrame
-        The dataframe containing the data from the xlsx file. Data frame containing the columns:
+        dataframe containing the data from the input file. Data frame containing the columns:
         - ``file_name`` (:py:class:`str`): the name of the file that is being analysed.
         - ``plate`` (:py:class:`str`): the name of the plate being analysed.
-        - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
+        - ``well_column_index`` (:py:class:`str`): the well column index.
+        - ``well_row_index`` (:py:class:`str`): the well row index.
+        - ``well_key`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
         - ``Time`` (:py:class:`float`, in hours)
         - ``OD`` (:py:class:`float`, in AU)
         - ``temperature`` (:py:class:`float` in celcius)
     '''
-    # Get logger object
-    logger = gc_utils.get_logger()
 
-    # data will hold all the measurements form the current file
-    data = None
-    # Hold the index to hold the next measurement into the numpy array
-    curr_index = 0
-    # calculate what the size of data needs to be to initialize it once
-    with pd.ExcelFile(file_path) as excel_file:
-        df = pd.read_excel(excel_file, excel_file.sheet_names[0])
-        number_of_measurements = gc_utils.get_max_cycle_number(df)
-        data = np.empty((len(data_rows) * len(data_columns) * number_of_measurements * len(excel_file.sheet_names), 6), dtype=object)
     current_file_name = pathlib.Path(file_path).stem
     print(f"Reading data from file {current_file_name}")
+
+    file_names = []
+    plate_names = []
+    well_keys = []
+    well_column_indexes = []
+    well_row_indexes = []
+    times = []
+    temperatures = []
+    ODs = []
     
+
     with pd.ExcelFile(file_path) as excel_file:
         # Loop all the sheets in the file
         for sheet_name in excel_file.sheet_names:
@@ -60,64 +63,58 @@ def read_tecan_stacker_xlsx(file_path, data_rows=["A" ,"B", "C", "D" ,"E", "F", 
             initial_ODs = {}
 
             # Load the current sheet of the excel file
-            df = pd.read_excel(excel_file, sheet_name)
+            raw_data_df = pd.read_excel(excel_file, sheet_name)
                         
             # Shared variables each measurement cycle
             cycle_time_in_hours = 0
             cycle_temp = 0
 
             # Loop all the rows in the dataframe
-            for row in df.itertuples(index=False):
+            for row in raw_data_df.itertuples(index=False):
                 # Save the time of the measurement in hours
                 if row[0] == "Time [s]":
                     cycle_time_in_hours = (row[1] / 3600)
                 # Save the temperature at the time of measurement
                 elif row[0] == "Temp. [°C]":
                     cycle_temp = row[1]
-                
-                # Save the OD of the wells
-                # if the current row is in the list of rows to be read
-                elif row[0] in data_rows:
-                    # Save the letter that represents the row
+                # Save the OD values
+                elif row[0] in plate_rows:
                     row_letter = row[0]
 
-                    # column_number is used to track the current column beigng processed
-                    for current_column in range (0, df.shape[1]):
-                        # Only read the data in the columns that are in the list of columns to be read
-                        if current_column in data_columns:
+                    for current_column in range(0, raw_data_df.shape[1]):
+                        if current_column in plate_columns:
                             # if OD is too high it will cause an error when measuring therefore raise an error
                             if row[current_column] == "OVER":
                                 err_msg = f'A measurement with the value of "OVER" is in cell {str(((row[0])))}{str(current_column)} at sheet: {sheet_name} in file: {current_file_name}'
-                                + ' please correct the invalid value and try rerunning the analysis'
-                                logger.critical(err_msg)
+                                log.append(err_msg)
                                 raise ValueError(err_msg)
-                            else:
-                                # Check if a value has alredy been saved for the current well
-                                key = f'{row_letter}{current_column}'
-                                if not key in initial_ODs:
-                                    # Save the initial OD value for the current well to later normalize against
-                                    initial_ODs[key] = row[current_column]
-                                    # Save the OD of the current well and all other data attached to it in a new index in the data array
-                                    # Since the first measurement is considered the "zero" is this experiment then set the OD value as 0
-                                    # Row order: file_name, plate, well, time, OD, temperature
-                                    data[curr_index] = [current_file_name, sheet_name, key, cycle_time_in_hours, 0, cycle_temp]
-                                    # Increase the index tracking the current insertion into the numpy array
-                                    curr_index += 1
-                                else:
-                                    # Save the OD of the current well and all other data attached to it in a new index in the data array and noramalize it
-                                    # Row order: file_name, plate, well, time, OD, temperature
-                                    data[curr_index] = [current_file_name, sheet_name, key, cycle_time_in_hours, row[current_column] - initial_ODs[key], cycle_temp]
-                                    # Increase the index tracking the current insertion into the numpy array
-                                    curr_index += 1
-    # Create a dataframe from the numpy array and returrn it
-    df = pd.DataFrame(data, columns=["file_name", "plate", "well", "Time", "OD", "temperature"])
-    df = df.astype({ 'file_name': str, 'plate': str, 'well': str, 'Time': float, 'OD': float, 'temperature': float })
-    # Make sure there are no empty rows in the dataframe
-    df = df.dropna()
-    # Index the dataframe by the file_name, plate and well and return
-    df.set_index(["file_name", "plate", "well"], inplace=True)
+                            
+                            # Check if a value has alredy been saved for the current well
+                            well_loc = f'{row_letter}{current_column}'
+                            if not well_loc in initial_ODs:
+                                # Save the initial OD value for the current well to later normalize against
+                                initial_ODs[well_loc] = row[current_column]
+                                
+                            # Add data to the lists
+                            file_names.append(current_file_name)
+                            plate_names.append(sheet_name)
+                            # The current_column is given in 1 based indexing, convert to 0 based indexing for consistency
+                            well_column_indexes.append(current_column - 1)
+                            well_row_indexes.append(gc_utils.convert_row_letter_to_number(row_letter))
+                            well_keys.append(well_loc)
+                            times.append(cycle_time_in_hours)
+                            temperatures.append(cycle_temp)
+
+                            # Normalize the OD by subtracting the initial OD (for the first OD read the the value will be negative therefore set it to 0)
+                            ODs.append(row[current_column] - initial_ODs[well_loc] if row[current_column] - initial_ODs[well_loc] > 0 else 0)
+
+    raw_data_df = pd.DataFrame({
+        "file_name": file_names, "plate": plate_names, "well_key":well_keys ,"well_column_index" : well_column_indexes, 
+        "well_row_indexes": well_row_indexes, "Time": times, "temperature": temperatures, "OD": ODs
+    })
+    raw_data_df = raw_data_df.set_index(["file_name", "plate", "well_column_index", "well_row_indexes"])
     # Sort the index
-    return df.sort_index()
+    return raw_data_df.sort_index()
 
 def save_dataframe_to_csv(df, output_file_path, file_name):
     '''

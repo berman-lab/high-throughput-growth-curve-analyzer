@@ -1,5 +1,6 @@
 import os
 import time
+import json
 import pathlib
 import argparse
 import itertools
@@ -13,15 +14,30 @@ import gc_utils
 
 
 def main():
+    log = []
+
+
     # Set up the argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument('-in', '--input_folder', help='The path to the folder with the measurements', required=True)
     parser.add_argument('-out', '--output_folder', help='The path to the folder under which the output will be saved', required=True)
+    parser.add_argument('-f', '--format', help='The layout of the plates (96, 384)', required=True)
     
     args = parser.parse_args()
     input_path = os.path.normcase(args.input_folder)
     output_path = os.path.normcase(args.output_folder)
+    format = int(args.format)
     
+
+    # Read the data from the config file based on the format provided as an argument
+    config = ''
+    with open('config.json') as json_file:
+        config = json.load(json_file)
+    
+    plate_rows = config[f'{format}_plate_rows']
+    plate_columns = config[f'{format}_plate_columns']
+    
+
     # Globals
     # Valued used to replace zeros with a values close to 0
     # that will not cause errors when applaying log to the data
@@ -35,7 +51,6 @@ def main():
     # Get all the files from the input directory
     files_for_analysis = gc_utils.get_files_from_directory(input_path, "xlsx")
 
-    # TODO: continue here and think of how to get rid of data_rows and data_columns and have the user pass them via config file
 
     # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
     file_df_mapping = {}
@@ -43,26 +58,30 @@ def main():
     # Add all the file names as keys to the dictionary and save the data in the dictionary
     for file in files_for_analysis:
         current_file_name = pathlib.Path(file).stem
-        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["A", "B", "C", "D" ,"E", "F", "G", ""], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, plate_rows, plate_columns, log)
         # Save the dataframes to a csv file
         gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_path, f'{current_file_name}_raw_data')
 
+
     print("Exported raw data to csv")
+
 
     summary_dfs = {}
     # Caclulate growth parameters for each experiment
     for file_name in file_df_mapping:
         summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
-        gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_directory, f'{file_name}_summary_data')
+        gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_path, f'{file_name}_summary_data')
+
 
     print("Finished calculating growth parameters")
+
 
     print("Creating figures")
     # Graph the data and save the figures to the output_directory
     for file_name in file_df_mapping:
         well_save_path = f'{file_name} single well graphs'
-        gc_io.create_directory(output_directory, well_save_path)
-        graphs_output_path = os.path.join(output_directory, well_save_path)
+        gc_io.create_directory(output_path, well_save_path)
+        graphs_output_path = os.path.join(output_path, well_save_path)
         gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path, "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
 
     # variation_matrix = get_reps_variation_data(raw_data)
@@ -70,6 +89,9 @@ def main():
     # averaged_rep = get_averaged_ExperimentData(raw_data)
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
+
+
+# All the below functions needs to be moved to a different file and imported here as dev gets here
 #IO
 def create_reps_avarage_graphs(reps, averaged_reps, output_path):
     '''

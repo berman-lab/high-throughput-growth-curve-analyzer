@@ -7,7 +7,7 @@ import concurrent.futures
 
 import gc_utils
 
-def get_experiment_growth_parameters(df):
+def get_experiment_growth_parameters(raw_data_df):
     '''
     Desrciption
     -----------
@@ -15,14 +15,8 @@ def get_experiment_growth_parameters(df):
     
     Parameters
     ----------
-    df : pandas.DataFrame
-        A Dataframe containing all OD measurement for the well with the time of measurement . columns:
-        - ``file_name`` (:py:class:`str`): the name of the file that is being analysed. [required]
-        - ``plate`` (:py:class:`str`): the name of the plate being analysed. : [required]
-        - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column. [required]
-        - ``time`` (:py:class:`float`, in hours): [required]
-        - ``OD`` (:py:class:`float`, in AU): [required]
-        - ``temperature`` (:py:class:`float`, in celcius): [optional]
+    raw_data_df : pandas.DataFrame
+        A Dataframe containing all OD measurement for the well with the time of measurement as described in the doc of : read_tecan_stacker_xlsx (or other import functions).
     
     Returns
     -------
@@ -41,12 +35,13 @@ def get_experiment_growth_parameters(df):
         - ``exponet_end_OD`` (:py:class:`float`, in AU): The OD at which the exponential phase ended (95% of the carrying capcity, K, first observed).
         - ``carrying_capacity`` (:py:class:`float`, in AU): The OD value determined to be the carrying capacity, K.
     '''
-    df_unindexed = df.reset_index()
+    raw_data_df_unindexed = raw_data_df.reset_index()
     # Get all the file_names, platenames and wellnames from the dataframe to iterate over
-    # file_name + platename + wellname are the keys by which the df is indexed
-    file_names = df_unindexed['file_name'].unique()
-    plate_names = df_unindexed['plate'].unique()
-    well_names = df_unindexed['well'].unique()
+    # "file_name", "plate", "well_column_index", "well_row_indexes" are the keys by which the df is indexed
+    file_names = raw_data_df_unindexed['file_name'].unique()
+    plate_names = raw_data_df_unindexed['plate'].unique()
+    well_column_indexes = raw_data_df_unindexed['well_column_index'].unique()
+    well_row_indexes = raw_data_df_unindexed['well_row_indexes'].unique()
     
     # Genrate a list of all the keys to run _get_well_growth_parameters on using ProcessPoolExecutor
     # A reference to the dataframe is added to the keys list so from it can be used in the function along with the other parameters
@@ -54,7 +49,7 @@ def get_experiment_growth_parameters(df):
     for file_name in file_names:
         for plate_name in plate_names:
             for well_name in well_names:
-                items.append((df, file_name, plate_name, well_name))
+                items.append((raw_data_df, file_name, plate_name, well_name))
 
     # Get the amount of cores to use for multiprocessing
     cores_for_use = multiprocessing.cpu_count()
