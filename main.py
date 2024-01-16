@@ -1,6 +1,7 @@
 import os
 import time
 import pathlib
+import argparse
 import itertools
 import numpy as np
 import pandas as pd
@@ -12,20 +13,14 @@ import gc_utils
 
 
 def main():
-    # Base config and program parametrs
-    # MacOS default path
-    base_path = "/Users/Shared/Data/bio-graphs"
-
-    # Check if the system is running on windows, if yes then set base_path to the windows default path
-    if os.name in ('nt', 'dos'):
-        base_path = "c:\Data\\bio-graphs"
+    # Set up the argument parser
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-in', '--input_folder', help='The path to the folder with the measurements', required=True)
+    parser.add_argument('-out', '--output_folder', help='The path to the folder under which the output will be saved', required=True)
     
-    # Make path string into a path object
-    base_path = os.path.normcase(base_path)
-    # Input directory
-    input_directory = os.path.join(base_path, "In")
-    # Output directory
-    output_directory = os.path.join(base_path, "Out")
+    args = parser.parse_args()
+    input_path = os.path.normcase(args.input_folder)
+    output_path = os.path.normcase(args.output_folder)
     
     # Globals
     # Valued used to replace zeros with a values close to 0
@@ -33,21 +28,14 @@ def main():
     global ZERO_SUB
     ZERO_SUB = 0.000001
 
-    # Used to account for the extrs column that the pandas reading function adds to the data
-    global LEFT_OFFSET
-    LEFT_OFFSET = 1
-
     # The amount of digits after the decimal point to show in plots
     global DECIMAL_PERCISION_IN_PLOTS
     DECIMAL_PERCISION_IN_PLOTS = 3 
 
     # Get all the files from the input directory
-    files_for_analysis = gc_utils.get_files_from_directory(input_directory, "xlsx")
-    # Create a folder for the current analysis in the output directory based on the first file name and update the output directory variable to the new path
-    output_directory = gc_io.create_directory(output_directory, pathlib.Path(files_for_analysis[0]).stem)
+    files_for_analysis = gc_utils.get_files_from_directory(input_path, "xlsx")
 
-    #Logging setup with the output directory as the save location of the log file
-    logger = gc_utils.get_logger(output_directory)
+    # TODO: continue here and think of how to get rid of data_rows and data_columns and have the user pass them via config file
 
     # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
     file_df_mapping = {}
@@ -55,9 +43,9 @@ def main():
     # Add all the file names as keys to the dictionary and save the data in the dictionary
     for file in files_for_analysis:
         current_file_name = pathlib.Path(file).stem
-        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
+        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, data_rows=["A", "B", "C", "D" ,"E", "F", "G", ""], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
         # Save the dataframes to a csv file
-        gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_directory, f'{current_file_name}_raw_data')
+        gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_path, f'{current_file_name}_raw_data')
 
     print("Exported raw data to csv")
 
