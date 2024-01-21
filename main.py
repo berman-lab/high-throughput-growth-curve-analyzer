@@ -69,7 +69,7 @@ def main():
     summary_dfs = {}
     # Caclulate growth parameters for each experiment
     for file_name in file_df_mapping:
-        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name])
+        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], log)
         gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_path, f'{file_name}_summary_data')
 
 

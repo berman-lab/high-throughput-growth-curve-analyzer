@@ -109,10 +109,10 @@ def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
                             ODs.append(row[current_column] - initial_ODs[well_loc] if row[current_column] - initial_ODs[well_loc] > 0 else 0)
 
     raw_data_df = pd.DataFrame({
-        "file_name": file_names, "plate": plate_names, "well_key":well_keys ,"well_column_index" : well_column_indexes, 
-        "well_row_indexes": well_row_indexes, "Time": times, "temperature": temperatures, "OD": ODs
+        "file_name": file_names, "plate": plate_names, "well_key": well_keys ,"well_column_index": well_column_indexes, 
+        "well_row_index": well_row_indexes, "Time": times, "temperature": temperatures, "OD": ODs
     })
-    raw_data_df = raw_data_df.set_index(["file_name", "plate", "well_column_index", "well_row_indexes"])
+    raw_data_df = raw_data_df.set_index(["file_name", "plate", "well_column_index", "well_row_index"])
     # Sort the index
     return raw_data_df.sort_index()
 
