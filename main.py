@@ -14,7 +14,7 @@ from experiment_data import ExperimentData
 
 def main():
     # Base config and program parametrs
-    base_path = os.path.normcase("c:\Data\\bio-graphs")
+    base_path = os.path.normcase("/Users/Shared/Data/bio-graphs")
     # Input directory
     input_directory = os.path.join(base_path, "In")
     # The directory into which all the graphs will be saved
@@ -86,7 +86,7 @@ def main():
         save_err_log(output_directory, "Error log", err_log)
 
 #IO
-def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["B", "C", "D" ,"E", "F", "G"], data_columns=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11]):
+def get_tecan_stacker_data(input_directory, extensions, err_log, data_rows=["A", "B", "C", "D" ,"E", "F", "G", "H"], data_columns=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]):
     '''Read all the data from the files with the given extension in the input directory given
     
      Parameters
