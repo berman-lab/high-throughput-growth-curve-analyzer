@@ -35,3 +35,4 @@ __pycache__/gc_utils.cpython-311.pyc
 __pycache__/operating_mode.cpython-311.pyc
 __pycache__/well_data.cpython-311.pyc
 .vscode/launch.json
+.DS_Store
