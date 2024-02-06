@@ -38,3 +38,6 @@ __pycache__/main.cpython-310.pyc
 __pycache__/gc_core.cpython-311.pyc
 __pycache__/gc_io.cpython-311.pyc
 __pycache__/gc_utils.cpython-311.pyc
+__pycache__/experiment_data.cpython-311.pyc
+__pycache__/operating_mode.cpython-311.pyc
+__pycache__/well_data.cpython-311.pyc
