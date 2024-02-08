@@ -94,4 +94,3 @@ if __name__ == "__main__":
     passed_time = time.time() - start_time
     # Convert the time to minutes and seconds and print it
     print(f"It took {int(passed_time / 60)} minutes and {int(passed_time % 60)} seconds to run the program")
-    
