@@ -27,7 +27,9 @@ def get_experiment_growth_parameters(raw_data_df, log):
         This dataframe will hold all the data gathered from the trained curveball models that were each fitted to a single well data. Dataframe containing the columns:
         - ``file_name`` (:py:class:`str`): the name of the file the well belongs to.
         - ``plate`` (:py:class:`str`): the name of the plate being analysed.
-        - ``well`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
+        - ``well_row_index`` the row index of the current well.
+        - ``well_column_index`` the column index of the current well.
+        - ``well_key`` the name of the well in the format "A1", "B2" etc.
         - ``is_valid`` (:py:class:`bool`): True if the well is has passed fitting, False if there was a problem and the fitting process wan't complete.
         - ``lag_end_time`` (:py:class:`float`, in hours): The time at which the lag phase ended.
         - ``lag_end_OD`` (:py:class:`float`, in AU): The OD at which the lag phase ended.
@@ -66,8 +68,17 @@ def get_experiment_growth_parameters(raw_data_df, log):
                                                 'max_population_gr_time', 'max_population_gr_OD', 'max_population_gr_slope',
                                                 'exponet_end_time', 'exponet_end_OD', 'carrying_capacity'])
 
+    # Add the well key to the dataframe
+    results_df['well_key'] = results_df.apply(lambda row: f'{gc_utils.convert_row_number_to_letter(row["well_row_index"])}{row["well_column_index"] + 1}', axis=1)
+
+    # Reorder the columns so that the well_name is the third column
+    results_df = results_df[['file_name', 'plate', 'well_row_index', 'well_column_index', 'well_key', 'is_valid', 'lag_end_time', 'lag_end_OD',
+                            'max_population_gr_time', 'max_population_gr_OD', 'max_population_gr_slope',
+                            'exponet_end_time', 'exponet_end_OD', 'carrying_capacity']]
+
     results_df = results_df.set_index(['file_name', 'plate', 'well_row_index', 'well_column_index'])
     return results_df.sort_index()
+
 
 def _get_well_growth_parameters(item):
     '''
@@ -192,6 +203,7 @@ def _get_well_growth_parameters(item):
     return __dict_for_return(file_name, plate_name, well_row_index, well_column_index, well_valid, lag_end_time, lag_end_OD, max_population_gr_time, max_population_gr_OD, max_population_gr_slope,
                     exponet_end_time, exponet_end_OD, carrying_capacity)
 
+
 # for return from _get_well_growth_parameters
 def __dict_for_return(file_name, plate, well_row_index, well_column_index, is_valid, lag_end_time, lag_end_OD, max_population_gr_time, max_population_gr_OD, max_population_gr_slope,
                  exponet_end_time, exponet_end_OD, carrying_capacity):
@@ -200,3 +212,136 @@ def __dict_for_return(file_name, plate, well_row_index, well_column_index, is_va
         'lag_end_time': lag_end_time, 'lag_end_OD': lag_end_OD, 'max_population_gr_time': max_population_gr_time, 'max_population_gr_OD': max_population_gr_OD,
         'max_population_gr_slope': max_population_gr_slope, 'exponet_end_time': exponet_end_time, 'exponet_end_OD': exponet_end_OD, 'carrying_capacity': carrying_capacity
     }
+
+
+def get_reps_variation_data(reps_data):
+    '''Get a pandas dataframe with the data of the variations between reps
+
+        Parameters
+    ----------
+    reps_data : [ExperimentData]
+
+    err_log : [str]
+        a refernce to the list containing all the previosuly logged errors
+    '''
+    data = []
+
+    # Generate the indexes for the pairwise CC test
+    indexes = itertools.combinations(range(0, len(reps_data)), 2)
+
+    # Get the amount of time in hours between each two measurement
+    # technical repeats run on the same program in the stacker and therefore will have the same gaps between two measurments
+    # take the last time and devide it by the amount of measurements done that is the length of the time array
+    time_gap_hours_between_measurements = reps_data[0][0].times[-1] / len(reps_data[0][0].times)
+
+    # Check if the reps are close enough to one another to average
+    # Run a cross-correlation test pair-wise
+    for i1, i2 in indexes:
+        for j in range(0, len(reps_data[0])):
+            for key in reps_data[i1][j].wells:
+                ODs1 = reps_data[i1][j].wells[key].ODs
+                ODs2 = reps_data[i2][j].wells[key].ODs
+
+                # run CC on OD1 and OD2 with itself to get a value to normalize against
+                perfect_CC_score = max(max(signal.correlate(ODs2, ODs2)), max(signal.correlate(ODs1, ODs1)))
+
+                # Run the CC test and save the results
+                # results with indexes toward the middle of the list reflect the score with small shifts
+                correlation_res = signal.correlate(ODs1, ODs2)
+
+                # Find the middle index
+                middle_index = len(correlation_res) // 2
+                middle_CC_score = correlation_res[middle_index]
+
+                max_CC_score_index = np.argmax(correlation_res)
+
+                max_CC_score = correlation_res[max_CC_score_index]
+                max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
+
+                repA = reps_data[i1][j]
+                repB = reps_data[i2][j]
+
+                data.append(
+                    {
+                        'repA': repA.file_name,
+                        'repB': repB.file_name,
+                        'plate': repA.plate_name,
+                        'well': convert_wellkey_to_text(key),
+                        'relative_CC_score' : middle_CC_score / perfect_CC_score,
+                        'repA_exponent_begin_time': repA.wells[key].exponent_begin[0],
+                        'repB_exponent_begin_time': repB.wells[key].exponent_begin[0],
+                        'repA_exponent_begin_OD': repA.wells[key].exponent_begin[1],
+                        'repB_exponent_begin_OD': repB.wells[key].exponent_begin[1],
+                        'repA_max_population_density': repA.wells[key].max_population_density,
+                        'repA_max_population_density': repB.wells[key].max_population_density,
+                        'repA_Time_95%(exp_end)': repA.wells[key].exponent_end[0],
+                        'repB_Time_95%(exp_end)': repB.wells[key].exponent_end[0],
+                        'repA_OD_95%': repA.wells[key].exponent_end[1], 
+                        'repB_OD_95%': repB.wells[key].exponent_end[1],
+                        'repA_max_population_gr_time': repA.wells[key].max_population_gr[0],
+                        'repB_max_population_gr_time': repB.wells[key].max_population_gr[0],
+                        'repA_max_population_gr_OD': repA.wells[key].max_population_gr[1],
+                        'repB_max_population_gr_OD': repB.wells[key].max_population_gr[1],
+                        'repA_max_population_gr_slope': repA.wells[key].max_population_gr[2],
+                        'repB_max_population_gr_slope': repA.wells[key].max_population_gr[2],
+
+                        'CC_score': middle_CC_score,
+                        'max_CC_score' : max_CC_score,
+                        'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
+                        'upper_limit_CC_score': perfect_CC_score,
+                    }
+                )
+    return pd.DataFrame(data)
+
+
+def get_averaged_ExperimentData(reps_data):
+
+    result = []
+
+    all_times = []
+    all_temps = []
+    
+
+    # average out all the times and temperatures
+    for plate_index in range(0, len(reps_data[0])):
+        result.append(ExperimentData(plate_name=f'Averaged plate {plate_index + 1}', file_name=reps_data[0][0].file_name))
+
+        # Create a new list to hold the internal reps data. Each element in the lists is the data about the plate from all the reps
+        all_times.append([])
+        all_temps.append([])
+
+        # add the data from each rep to the list
+        for rep in reps_data:
+            all_times[-1].append(np.array(rep[plate_index].times))
+            all_temps[-1].append(np.array(rep[plate_index].temps))
+            
+        
+        # average the data from each well and save it into the result object
+        # for each key - well in the wells dictionary
+        for key in reps_data[0][0].wells:
+            tmp_ODs = []
+            for rep in reps_data:
+                tmp_ODs.append(np.array(rep[plate_index].wells[key].ODs))
+            
+            # save the average of the data from each rep into the well under the appropraite key in result object
+            result[-1].wells[key] = WellData(ODs=np.mean(tmp_ODs, axis=0), is_valid=True)
+        
+        # avarage out all the internal values from the nested lists and put the mean into the mean list
+        result[-1].times = np.mean(all_times, axis=1).tolist()
+        result[-1].temps = np.mean(all_temps, axis=1).tolist()
+
+    return result
+
+
+# TODO: Add a check for the CC score of each well to make sure it is not too low and add to code the output into the error log
+def flag_invalid_replicates(reps_data):
+    '''
+    Finds the wells within replicates that are invalid and returns a list of the indexes of the invalid wells
+    '''
+    invalid_replicates = []
+    for i in range(0, len(reps_data)):
+        for j in range(0, len(reps_data[i])):
+            for key in reps_data[i][j].wells:
+                if reps_data[i][j].wells[key].is_valid == False:
+                    invalid_replicates.append((i, j, key))
+    return invalid_replicates
