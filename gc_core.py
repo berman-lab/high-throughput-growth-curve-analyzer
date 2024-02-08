@@ -2,9 +2,11 @@ import os
 import itertools
 import curveball
 import numpy as np
+import scipy.signal
 import pandas as pd
 import multiprocessing
 import concurrent.futures
+
 
 import gc_utils
 
@@ -214,84 +216,103 @@ def __dict_for_return(file_name, plate, well_row_index, well_column_index, is_va
     }
 
 
-def get_reps_variation_data(reps_data):
-    '''Get a pandas dataframe with the data of the variations between reps
-
-        Parameters
-    ----------
-    reps_data : [ExperimentData]
-
-    err_log : [str]
-        a refernce to the list containing all the previosuly logged errors
+def get_reps_variation_data(reps_raw_data, reps_summary_data, err_log):
     '''
-    data = []
+    Desrciption
+    -----------
+    Get a dataframe with the cross-correlation scores for each well in the replicates and all it's other growth parameters
 
-    # Generate the indexes for the pairwise CC test
-    indexes = itertools.combinations(range(0, len(reps_data)), 2)
+    Parameters
+    ----------
+    reps_raw_data : dict
+        A dictionary containing the raw data for each replicate
+    reps_summary_data : dict
+        A dictionary containing the summary data for each replicate
+    err_log : list of strings
+        A list of strings containing the log messages
+
+    Returns
+    -------
+    pandas.DataFrame
+        The summary data for both replicates and the cross-correlation scores for each well in the replicates
+    '''
+
+    all_files_raw_data = []
+
+    # resolve the unnecessary dict in the reps_data for this function
+    for key, value in reps_raw_data.items():
+        all_files_raw_data.append(value.reset_index())
+    
 
     # Get the amount of time in hours between each two measurement
     # technical repeats run on the same program in the stacker and therefore will have the same gaps between two measurments
     # take the last time and devide it by the amount of measurements done that is the length of the time array
-    time_gap_hours_between_measurements = reps_data[0][0].times[-1] / len(reps_data[0][0].times)
+    time_gap_hours_between_measurements = list(all_files_raw_data[0].Time)[-1] / len(all_files_raw_data[0].Time)
 
-    # Check if the reps are close enough to one another to average
-    # Run a cross-correlation test pair-wise
+    export_data = []
+
+    # Generate the indexes for the pairwise CC test
+    indexes = itertools.combinations(range(0, len(all_files_raw_data)), 2)
+
+    # Run a cross-correlation pair-wise
     for i1, i2 in indexes:
-        for j in range(0, len(reps_data[0])):
-            for key in reps_data[i1][j].wells:
-                ODs1 = reps_data[i1][j].wells[key].ODs
-                ODs2 = reps_data[i2][j].wells[key].ODs
+        for key in all_files_raw_data[i1].well_key:
+            ODs1 = list(all_files_raw_data[i1].loc[all_files_raw_data[i1].well_key == key].OD)
+            ODs2 = list(all_files_raw_data[i2].loc[all_files_raw_data[i2].well_key == key].OD)
 
-                # run CC on OD1 and OD2 with itself to get a value to normalize against
-                perfect_CC_score = max(max(signal.correlate(ODs2, ODs2)), max(signal.correlate(ODs1, ODs1)))
+            # run CC on OD1 and OD2 with itself to get a value to normalize against
+            perfect_CC_score = max(max(scipy.signal.correlate(ODs2, ODs2, method='fft')), max(scipy.signal.correlate(ODs1, ODs1, method='fft')))
 
-                # Run the CC test and save the results
-                # results with indexes toward the middle of the list reflect the score with small shifts
-                correlation_res = signal.correlate(ODs1, ODs2)
+            # Run the CC test and save the results
+            # results with indexes toward the middle of the list reflect the score with small shifts
+            correlation_res = scipy.signal.correlate(ODs1, ODs2, method='fft')
 
-                # Find the middle index
-                middle_index = len(correlation_res) // 2
-                middle_CC_score = correlation_res[middle_index]
+            # Find the middle index
+            middle_index = len(correlation_res) // 2
+            middle_CC_score = correlation_res[middle_index]
 
-                max_CC_score_index = np.argmax(correlation_res)
+            max_CC_score_index = np.argmax(correlation_res)
 
-                max_CC_score = correlation_res[max_CC_score_index]
-                max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
+            max_CC_score = correlation_res[max_CC_score_index]
+            max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
 
-                repA = reps_data[i1][j]
-                repB = reps_data[i2][j]
+            repA = all_files_raw_data[i1].iloc[0]
+            repB = all_files_raw_data[i2].iloc[0]
 
-                data.append(
-                    {
-                        'repA': repA.file_name,
-                        'repB': repB.file_name,
-                        'plate': repA.plate_name,
-                        'well': convert_wellkey_to_text(key),
-                        'relative_CC_score' : middle_CC_score / perfect_CC_score,
-                        'repA_exponent_begin_time': repA.wells[key].exponent_begin[0],
-                        'repB_exponent_begin_time': repB.wells[key].exponent_begin[0],
-                        'repA_exponent_begin_OD': repA.wells[key].exponent_begin[1],
-                        'repB_exponent_begin_OD': repB.wells[key].exponent_begin[1],
-                        'repA_max_population_density': repA.wells[key].max_population_density,
-                        'repA_max_population_density': repB.wells[key].max_population_density,
-                        'repA_Time_95%(exp_end)': repA.wells[key].exponent_end[0],
-                        'repB_Time_95%(exp_end)': repB.wells[key].exponent_end[0],
-                        'repA_OD_95%': repA.wells[key].exponent_end[1], 
-                        'repB_OD_95%': repB.wells[key].exponent_end[1],
-                        'repA_max_population_gr_time': repA.wells[key].max_population_gr[0],
-                        'repB_max_population_gr_time': repB.wells[key].max_population_gr[0],
-                        'repA_max_population_gr_OD': repA.wells[key].max_population_gr[1],
-                        'repB_max_population_gr_OD': repB.wells[key].max_population_gr[1],
-                        'repA_max_population_gr_slope': repA.wells[key].max_population_gr[2],
-                        'repB_max_population_gr_slope': repA.wells[key].max_population_gr[2],
+            export_data.append(
+                {
+                    'repA': repA.file_name,
+                    'repB': repB.file_name,
+                    'plate': repA.plate,
+                    'well_column_index': repA.well_column_index,
+                    'well_row_index': repA.well_row_index,
+                    'well_key': f'{gc_utils.convert_row_number_to_letter(repA.well_row_index)}{repA.well_column_index + 1}',
+                    'relative_CC_score' : middle_CC_score / perfect_CC_score,
+                    # TODO: continue from here, need to get the growth parameters from the summary data object
+                    'repA_exponent_begin_time': repA.wells[key].exponent_begin[0],
+                    'repB_exponent_begin_time': repB.wells[key].exponent_begin[0],
+                    'repA_exponent_begin_OD': repA.wells[key].exponent_begin[1],
+                    'repB_exponent_begin_OD': repB.wells[key].exponent_begin[1],
+                    'repA_max_population_density': repA.wells[key].max_population_density,
+                    'repA_max_population_density': repB.wells[key].max_population_density,
+                    'repA_Time_95%(exp_end)': repA.wells[key].exponent_end[0],
+                    'repB_Time_95%(exp_end)': repB.wells[key].exponent_end[0],
+                    'repA_OD_95%': repA.wells[key].exponent_end[1], 
+                    'repB_OD_95%': repB.wells[key].exponent_end[1],
+                    'repA_max_population_gr_time': repA.wells[key].max_population_gr[0],
+                    'repB_max_population_gr_time': repB.wells[key].max_population_gr[0],
+                    'repA_max_population_gr_OD': repA.wells[key].max_population_gr[1],
+                    'repB_max_population_gr_OD': repB.wells[key].max_population_gr[1],
+                    'repA_max_population_gr_slope': repA.wells[key].max_population_gr[2],
+                    'repB_max_population_gr_slope': repA.wells[key].max_population_gr[2],
 
-                        'CC_score': middle_CC_score,
-                        'max_CC_score' : max_CC_score,
-                        'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
-                        'upper_limit_CC_score': perfect_CC_score,
-                    }
-                )
-    return pd.DataFrame(data)
+                    'CC_score': middle_CC_score,
+                    'max_CC_score' : max_CC_score,
+                    'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
+                    'upper_limit_CC_score': perfect_CC_score,
+                }
+            )
+    return pd.DataFrame(export_data)
 
 
 def get_averaged_ExperimentData(reps_data):
