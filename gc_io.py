@@ -137,6 +137,7 @@ def save_dataframe_to_csv(df, output_file_path, file_name):
     df.to_csv(file_path_with_file_name, index=True)
     return file_path_with_file_name
 
+
 def create_directory(father_directory, nested_directory_name):
     '''
     Description
@@ -156,6 +157,7 @@ def create_directory(father_directory, nested_directory_name):
     if not os.path.isdir(new_dir_path):
         os.mkdir(new_dir_path)
     return new_dir_path
+
 
 def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, title, decimal_percision):
     '''Create graphs from the data collected in previous steps for each well in the experiment
@@ -187,16 +189,18 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
     alpha = 0.6
 
     df_unindexed = raw_data.reset_index()
-    # Get all the file_names, platenames and wellnames from the dataframe to iterate over
-    # file_name + platename + wellname are the keys by which the df is indexed
+    # Get all unique keys to loop through
     file_names = df_unindexed['file_name'].unique()
     plate_names = df_unindexed['plate'].unique()
-    well_names = df_unindexed['well'].unique()
+    well_row_indexes = df_unindexed['well_row_index'].unique()
+    well_column_indexes = df_unindexed['well_column_index'].unique()
+
 
     
-    for file_name ,plate_name, well_name in itertools.product(file_names ,plate_names, well_names):
-        well_raw_data = raw_data.xs((file_name, plate_name, well_name), level=['file_name', 'plate', 'well'])
-        well_summary_data = (summary_data.xs((file_name, plate_name, well_name), level=['file_name', 'plate', 'well'])).iloc[0,:]
+    for file_name ,plate_name, well_row_index, well_column_index in itertools.product(file_names ,plate_names, well_row_indexes, well_column_indexes):
+        well_raw_data = raw_data.xs((file_name, plate_name, well_row_index, well_column_index), level=['file_name', 'plate', 'well_row_index', 'well_column_index'])
+        well_summary_data = (summary_data.xs((file_name, plate_name, well_row_index, well_column_index),
+                                              level=['file_name', 'plate', 'well_row_index', 'well_column_index'])).iloc[0,:]
         # Setup axis and the figure objects
         fig, ax = plt.subplots()
         ax.set_title(title)
@@ -231,5 +235,43 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
             ax.legend(loc="lower right")
         
         # Save the figure
-        fig.savefig(os.path.join(output_path, f"well {well_name} from {plate_name} in {file_name}"))
+        fig.savefig(os.path.join(output_path, f"well {well_summary_data['well_key']} from {plate_name} in {file_name}"))
         plt.close("all")
+
+
+def create_reps_avarage_graphs(reps, averaged_reps, output_path):
+    '''
+    Create graphs from the data collected in previous steps
+    Parameters
+    ----------
+    reps : [ExperimentData object]
+        All the data from the expriment
+    averaged_rep : ExperimentData object
+        The data from the expriment after the averaging procedure
+    output_path : str
+        path to the file into which the graphes will be saved to
+    Returns
+    -------
+    null
+    '''
+    # Iterate over all the plates
+    for i in range(0, len(reps[0])):
+        # Loop over all wells within each plate
+        for key in averaged_reps[i].wells:
+            # Setup axis and the figure objects
+            fig, ax = plt.subplots()
+            ax.set_title(f"Average of wells {convert_wellkey_to_text(key)} from all wells from {reps[0][i].plate_name}")
+            ax.set_xlabel('Time [hours]')
+            ax.set_ylabel('OD600')
+
+            # Plot the main graph
+            ax.plot(averaged_reps[i].times[0], averaged_reps[i].wells[key].ODs, color='black', label='Average')
+            # Plot the replicates graphs
+            for j in range(0, len(reps)):
+                ax.plot(reps[j][i].times, reps[j][i].wells[key].ODs, linestyle=':', label=f'{reps[j][i].plate_name} from replicate {i+j+1}')
+            
+            
+            ax.legend(loc="lower right")
+            # Save the figure
+            fig.savefig(os.path.join(output_path, f"Average of wells {convert_wellkey_to_text(key)} in {reps[j][i].plate_name}"))
+            plt.close('all')
