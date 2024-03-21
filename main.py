@@ -82,20 +82,25 @@ def main():
             gc_io.create_directory(output_path, well_save_path)
             graphs_output_path = os.path.join(output_path, well_save_path)
             gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path,
-                                            "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
+                                            "OD600nm as a function of time in hours", DECIMAL_PERCISION_IN_PLOTS)
 
+    # ----------------------------------------------------
+    # QC comparinson of multiple reapets beyond this point
+    # ----------------------------------------------------
 
     # Check that the user provided config makes sense
-    # if len(file_df_mapping) == 1 and repeats == []:
-    #     err_text = 'No repeats were provided and only one file was provided. No analysis can be done across plates. Finishing the program.'
-    #     log.append(err_text)
-    #     print(err_text)
-    #     return
+    if len(file_df_mapping) == 1 and repeats == []:
+        err_text = 'No repeats were provided and only one file was provided. No analysis can be done across plates. Finishing the program.'
+        log.append(err_text)
+        print(err_text)
+        return
 
     variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, repeats ,log)
-    variation_matrix.to_csv(os.path.join(output_path, f'{file_df_mapping.keys()[0]}-{file_df_mapping.keys()[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
+
+    variation_matrix_unidexed = variation_matrix.reset_index()
+    variation_matrix_unidexed.to_csv(os.path.join(output_path, f'{list(file_df_mapping.keys())[0]}-{list(file_df_mapping.keys())[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
     
-    # averaged_rep = get_averaged_ExperimentData(raw_data)
+    averaged_rep = gc_core.get_averaged_ExperimentData(file_df_mapping, summary_dfs, repeats, log)
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 
