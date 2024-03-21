@@ -22,7 +22,7 @@ def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
     Parameters
     ----------
     file_path : str
-        The path to the folder where all the data for analysis is stored
+        The path to the file
     plate_rows : list of strings
         The rows of the plates to read data from
     plate_columns : list of integers
@@ -32,15 +32,15 @@ def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
     Returns
     -------
     pandas.DataFrame
-        dataframe containing the data from the input file. Data frame containing the columns:
-        - ``file_name`` (:py:class:`str`): the name of the file that is being analysed.
-        - ``plate`` (:py:class:`str`): the name of the plate being analysed.
-        - ``well_column_index`` (:py:class:`str`): the well column index.
-        - ``well_row_index`` (:py:class:`str`): the well row index.
+        dataframe containing the data from the input file indxed by file_name, plate_name, row_index, column_index. Columns:
+        - ``file_name`` (:py:class:`str`): the name of the file the data comes from.
+        - ``plate_name`` (:py:class:`str`): the name of the plate the data comes from.
         - ``well_key`` (:py:class:`str`): the well name, a letter for the row and a number of the column.
-        - ``Time`` (:py:class:`float`, in hours)
-        - ``OD`` (:py:class:`float`, in AU)
-        - ``temperature`` (:py:class:`float` in celcius)
+        - ``well_row_index`` (:py:class:`int`): the well row index.
+        - ``well_column_index`` (:py:class:`str`): the well column index.
+        - ``time`` (:py:class:`float`) measurement time in hours
+        - ``temperature`` (:py:class:`float`) degrees in celsius
+        - ``OD`` (:py:class:`float`) Optical density in AU
     '''
 
     current_file_name = pathlib.Path(file_path).stem
@@ -109,10 +109,11 @@ def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
                             ODs.append(row[current_column] - initial_ODs[well_loc] if row[current_column] - initial_ODs[well_loc] > 0 else 0)
 
     raw_data_df = pd.DataFrame({
-        "file_name": file_names, "plate": plate_names, "well_key": well_keys ,"well_column_index": well_column_indexes, 
-        "well_row_index": well_row_indexes, "Time": times, "temperature": temperatures, "OD": ODs
+        "file_name": file_names, "plate_name": plate_names, "well_key": well_keys , "well_row_index": well_row_indexes,
+        "well_column_index": well_column_indexes, "time": times, "temperature": temperatures, "OD": ODs
     })
-    raw_data_df = raw_data_df.set_index(["file_name", "plate", "well_column_index", "well_row_index"])
+
+    raw_data_df = raw_data_df.set_index(["file_name", "plate_name", "well_row_index", "well_column_index"])
     # Sort the index
     return raw_data_df.sort_index()
 
@@ -191,16 +192,15 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
     df_unindexed = raw_data.reset_index()
     # Get all unique keys to loop through
     file_names = df_unindexed['file_name'].unique()
-    plate_names = df_unindexed['plate'].unique()
+    plate_names = df_unindexed['plate_name'].unique()
     well_row_indexes = df_unindexed['well_row_index'].unique()
     well_column_indexes = df_unindexed['well_column_index'].unique()
 
 
     
-    for file_name ,plate_name, well_row_index, well_column_index in itertools.product(file_names ,plate_names, well_row_indexes, well_column_indexes):
-        well_raw_data = raw_data.xs((file_name, plate_name, well_row_index, well_column_index), level=['file_name', 'plate', 'well_row_index', 'well_column_index'])
-        well_summary_data = (summary_data.xs((file_name, plate_name, well_row_index, well_column_index),
-                                              level=['file_name', 'plate', 'well_row_index', 'well_column_index'])).iloc[0,:]
+    for file_name, plate_name, well_row_index, well_column_index in itertools.product(file_names ,plate_names, well_row_indexes, well_column_indexes):
+        well_raw_data = raw_data.xs((file_name, plate_name, well_row_index, well_column_index), level=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])
+        well_summary_data = (summary_data.xs((file_name, plate_name, well_row_index, well_column_index), level=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])).iloc[0,:]
         # Setup axis and the figure objects
         fig, ax = plt.subplots()
         ax.set_title(title)
@@ -208,7 +208,7 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
         ax.set_ylabel('OD600')
 
         # Plot the main graph
-        ax.plot(well_raw_data["Time"], well_raw_data["OD"])
+        ax.plot(well_raw_data["time"], well_raw_data["OD"])
         
         # If the well is valid graph it with the data from the fitting procedure, otherwise only graph time vs OD as an aid for seeing what went wrong
         if well_summary_data["is_valid"]:
@@ -240,38 +240,4 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
 
 
 def create_reps_avarage_graphs(reps, averaged_reps, output_path):
-    '''
-    Create graphs from the data collected in previous steps
-    Parameters
-    ----------
-    reps : [ExperimentData object]
-        All the data from the expriment
-    averaged_rep : ExperimentData object
-        The data from the expriment after the averaging procedure
-    output_path : str
-        path to the file into which the graphes will be saved to
-    Returns
-    -------
-    null
-    '''
-    # Iterate over all the plates
-    for i in range(0, len(reps[0])):
-        # Loop over all wells within each plate
-        for key in averaged_reps[i].wells:
-            # Setup axis and the figure objects
-            fig, ax = plt.subplots()
-            ax.set_title(f"Average of wells {convert_wellkey_to_text(key)} from all wells from {reps[0][i].plate_name}")
-            ax.set_xlabel('Time [hours]')
-            ax.set_ylabel('OD600')
-
-            # Plot the main graph
-            ax.plot(averaged_reps[i].times[0], averaged_reps[i].wells[key].ODs, color='black', label='Average')
-            # Plot the replicates graphs
-            for j in range(0, len(reps)):
-                ax.plot(reps[j][i].times, reps[j][i].wells[key].ODs, linestyle=':', label=f'{reps[j][i].plate_name} from replicate {i+j+1}')
-            
-            
-            ax.legend(loc="lower right")
-            # Save the figure
-            fig.savefig(os.path.join(output_path, f"Average of wells {convert_wellkey_to_text(key)} in {reps[j][i].plate_name}"))
-            plt.close('all')
+    return 1
