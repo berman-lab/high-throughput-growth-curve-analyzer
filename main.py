@@ -22,11 +22,13 @@ def main():
     parser.add_argument('-in', '--input_folder', help='The path to the folder with the measurements', required=True)
     parser.add_argument('-out', '--output_folder', help='The path to the folder under which the output will be saved', required=True)
     parser.add_argument('-f', '--format', help='The layout of the plates (96, 384)', required=True)
+    parser.add_argument('-g', '--is_create_graphs', help='should single well graphs be generated or only tables', default=False ,action='store_true')
     
     args = parser.parse_args()
     input_path = os.path.normcase(args.input_folder)
     output_path = os.path.normcase(args.output_folder)
     format = int(args.format)
+    is_create_graphs = args.is_create_graphs
     
 
     # Read the data from the config file based on the format provided as an argument
@@ -36,6 +38,7 @@ def main():
     
     plate_rows = config[f'{format}_plate_rows']
     plate_columns = config[f'{format}_plate_columns']
+    repeats = config[f'repeats']
     
 
     # Globals
@@ -71,18 +74,26 @@ def main():
         summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], log)
         gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_path, f'{file_name}_summary_data')
 
+    if is_create_graphs:
+        print("Creating figures")
+        # Graph the data and save the figures to the output_directory
+        for file_name in file_df_mapping:
+            well_save_path = f'{file_name} single well graphs'
+            gc_io.create_directory(output_path, well_save_path)
+            graphs_output_path = os.path.join(output_path, well_save_path)
+            gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path,
+                                            "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
 
-    print("Creating figures")
-    # Graph the data and save the figures to the output_directory
-    for file_name in file_df_mapping:
-        well_save_path = f'{file_name} single well graphs'
-        gc_io.create_directory(output_path, well_save_path)
-        graphs_output_path = os.path.join(output_path, well_save_path)
-        gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path, "OD600[nm] against Time[hours]", DECIMAL_PERCISION_IN_PLOTS)
 
+    # Check that the user provided config makes sense
+    # if len(file_df_mapping) == 1 and repeats == []:
+    #     err_text = 'No repeats were provided and only one file was provided. No analysis can be done across plates. Finishing the program.'
+    #     log.append(err_text)
+    #     print(err_text)
+    #     return
 
-    #variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, log)
-    #variation_matrix.to_csv(os.path.join(output_path, f'{file_df_mapping.keys()[0]}-{file_df_mapping.keys()[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
+    variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, repeats ,log)
+    variation_matrix.to_csv(os.path.join(output_path, f'{file_df_mapping.keys()[0]}-{file_df_mapping.keys()[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
     
     # averaged_rep = get_averaged_ExperimentData(raw_data)
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
