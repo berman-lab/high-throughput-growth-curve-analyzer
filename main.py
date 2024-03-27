@@ -14,9 +14,6 @@ import gc_utils
 
 
 def main():
-    log = []
-
-
     # Set up the argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument('-in', '--input_folder', help='The path to the folder with the measurements', required=True)
@@ -30,6 +27,8 @@ def main():
     format = int(args.format)
     is_create_graphs = args.is_create_graphs
     
+    log = []
+    log_save_path = os.path.join(output_path, 'log.txt')
 
     # Read the data from the config file based on the format provided as an argument
     config = ''
@@ -66,6 +65,7 @@ def main():
         gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_path, f'{current_file_name}_raw_data')
     print("Exported raw data to csv")
 
+    gc_utils.save_log(log, log_save_path)
 
     print("Calculating growth parameters")
     summary_dfs = {}
@@ -73,6 +73,8 @@ def main():
     for file_name in file_df_mapping:
         summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], log)
         gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_path, f'{file_name}_summary_data')
+
+    gc_utils.save_log(log, log_save_path)
 
     if is_create_graphs:
         print("Creating figures")
@@ -83,6 +85,8 @@ def main():
             graphs_output_path = os.path.join(output_path, well_save_path)
             gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path,
                                             "OD600nm as a function of time in hours", DECIMAL_PERCISION_IN_PLOTS)
+
+    gc_utils.save_log(log, log_save_path)
 
     # ----------------------------------------------------
     # QC comparinson of multiple reapets beyond this point
@@ -100,7 +104,9 @@ def main():
     variation_matrix_unidexed = variation_matrix.reset_index()
     variation_matrix_unidexed.to_csv(os.path.join(output_path, f'{list(file_df_mapping.keys())[0]}-{list(file_df_mapping.keys())[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
     
-    averaged_rep = gc_core.get_averaged_ExperimentData(file_df_mapping, summary_dfs, repeats, log)
+    gc_utils.save_log(log, log_save_path)
+
+    #averaged_rep = gc_core.get_averaged_ExperimentData(file_df_mapping, summary_dfs, repeats, log)
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 
