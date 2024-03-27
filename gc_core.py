@@ -139,7 +139,18 @@ def _get_well_growth_parameters(item):
     try:
         # Rename time to Time since curveball expects the column to be named 'Time'
         well_data = well_data.rename(columns={'time': 'Time'})
-        models = curveball.models.fit_model(well_data, PLOT=False, PRINT=False)
+        y0 = np.min(well_data.OD)
+        k = np.max(well_data.OD)
+        # No justification for the guess values, they are just a guess.
+        # The fitting process will determine the best values for the parameters anyway, those are just to get the process started
+        r = 0.1
+        nu = 0.1
+        q0 = 0.1
+        v = 0.1
+
+        guess = {'y0': y0, 'k': k, 'r': r, 'nu': nu, 'q0': q0, 'v': v}
+
+        models = curveball.models.fit_model(well_data, param_guess=guess ,PLOT=False, PRINT=False)
         # Change the name back to time
         well_data = well_data.rename(columns={'Time': 'time'})
     except ValueError as e:
