@@ -235,7 +235,7 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
             ax.legend(loc="lower right")
         
         # Save the figure
-        fig.savefig(os.path.join(output_path, f"well {well_summary_data['well_key']} from {plate_name} in {file_name}"))
+        fig.savefig(os.path.join(output_path, f"well {well_summary_data['well_key']} from {plate_name} in {file_name}.png"))
         plt.close("all")
 
 
