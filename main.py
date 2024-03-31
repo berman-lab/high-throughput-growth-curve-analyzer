@@ -27,8 +27,6 @@ def main():
     format = int(args.format)
     is_create_graphs = args.is_create_graphs
     
-    log = []
-    log_save_path = os.path.join(output_path, 'log.txt')
 
     # Read the data from the config file based on the format provided as an argument
     config = ''
@@ -53,29 +51,36 @@ def main():
     # Get all the files from the input directory
     files_for_analysis = gc_utils.get_files_from_directory(input_path, "xlsx")
 
-
-    # Crearte a dictionary of all the files with the file name as the key and all the measurements in a data as the value in a dataframe
+    file_import_log = []
+    file_import_log_save_path = os.path.join(output_path, 'file_import_log.txt')
+    
     file_df_mapping = {}
     print("Importing the data from files")
     # Add all the file names as keys to the dictionary and save the data in the dictionary
     for file in files_for_analysis:
         current_file_name = pathlib.Path(file).stem
-        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, plate_rows, plate_columns, log)
+        file_df_mapping[current_file_name] = gc_io.read_tecan_stacker_xlsx(file, plate_rows, plate_columns, file_import_log)
         # Save the dataframes to a csv file
         gc_io.save_dataframe_to_csv(file_df_mapping[current_file_name], output_path, f'{current_file_name}_raw_data')
     print("Exported raw data to csv")
 
-    gc_utils.save_log(log, log_save_path)
+    gc_utils.save_log(file_import_log, file_import_log_save_path)
 
+
+    growth_parameters_log = []
+    growth_parameters_log_save_path = os.path.join(output_path, 'growth_parameters_log.txt')
     print("Calculating growth parameters")
     summary_dfs = {}
     # Caclulate growth parameters for each experiment
     for file_name in file_df_mapping:
-        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], log)
+        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], growth_parameters_log)
         gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_path, f'{file_name}_summary_data')
+    
+    gc_utils.save_log(growth_parameters_log, growth_parameters_log_save_path)
 
-    gc_utils.save_log(log, log_save_path)
 
+    figures_log = []
+    figures_log_save_path = os.path.join(output_path, 'figures_log.txt')
     if is_create_graphs:
         print("Creating figures")
         # Graph the data and save the figures to the output_directory
@@ -86,25 +91,28 @@ def main():
             gc_io.create_single_well_graphs(file_name, file_df_mapping[file_name], summary_dfs[file_name], graphs_output_path,
                                             "OD600nm as a function of time in hours", DECIMAL_PERCISION_IN_PLOTS)
 
-    gc_utils.save_log(log, log_save_path)
+    gc_utils.save_log(figures_log, figures_log_save_path)
 
     # ----------------------------------------------------
-    # QC comparinson of multiple reapets beyond this point
+    # QC comparison of multiple reapets beyond this point
     # ----------------------------------------------------
 
+    multiple_well_comparison_log = []
+    multiple_well_comparison_log_save_path = os.path.join(output_path, 'multiple_well_comparison_log.txt')
+    print("Comparing multiple repeats")
     # Check that the user provided config makes sense
     if len(file_df_mapping) == 1 and repeats == []:
         err_text = 'No repeats were provided and only one file was provided. No analysis can be done across plates. Finishing the program.'
-        log.append(err_text)
+        multiple_well_comparison_log.append(err_text)
         print(err_text)
         return
 
-    variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, repeats ,log)
+    variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, repeats ,file_import_log)
 
     variation_matrix_unidexed = variation_matrix.reset_index()
     variation_matrix_unidexed.to_csv(os.path.join(output_path, f'{list(file_df_mapping.keys())[0]}-{list(file_df_mapping.keys())[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
     
-    gc_utils.save_log(log, log_save_path)
+    gc_utils.save_log(multiple_well_comparison_log, multiple_well_comparison_log_save_path)
 
     #averaged_rep = gc_core.get_averaged_ExperimentData(file_df_mapping, summary_dfs, repeats, log)
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
