@@ -3,5 +3,5 @@
     "96_plate_columns": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
     "384_plate_rows": ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P"],
     "384_plate_columns": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24],
-    "repeats": [["Plate 1", "Plate 3", "Plate 5"],["Plate 2", "Plate 6", "Plate 8"],["Plate 3", "Plate 9", "Plate 11"],["Plate 4", "Plate 12", "Plate 14"],["Plate 5", "Plate 15", "Plate 17"]]
+    "repeats": [["Plate 1"],["Plate 2", "Plate 3", "Plate 4"],["Plate 5", "Plate 6", "Plate 7"],["Plate 8", "Plate 9", "Plate 10"],["Plate 11", "Plate 12", "Plate 13"],["Plate 14", "Plate 15", "Plate 16"],["Plate 17", "Plate 18", "Plate 19"],["Plate 20", "Plate 21", "Plate 22"],["Plate 23", "Plate 24", "Plate 25"],["Plate 26", "Plate 27", "Plate 28"],["Plate 29", "Plate 30", "Plate 31"]]
 }
