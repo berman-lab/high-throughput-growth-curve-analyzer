@@ -389,9 +389,15 @@ def __compare_replicates(rep1_data, rep2_data, time_gap_hours_between_measuremen
     max_CC_score = correlation_res[max_CC_score_index]
     max_CC_shift_from_mid = (max_CC_score_index - middle_index) * time_gap_hours_between_measurements
 
+
+    relative_CC_score = 0
+    # If the perfect CC score is 0 then all the data is both curves was zero, therefore the relative_CC_score also needs to be zero
+    if perfect_CC_score != 0:
+        relative_CC_score = middle_CC_score / perfect_CC_score
+
     # Return the results in a dictionary
     return {
-        'relative_CC_score' : middle_CC_score / perfect_CC_score,
+        'relative_CC_score' : relative_CC_score,
         'CC_score': middle_CC_score,
         'max_CC_score' : max_CC_score,
         'max_CC_score_shift_in_hours' : max_CC_shift_from_mid,
