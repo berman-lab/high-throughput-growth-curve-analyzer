@@ -36,7 +36,7 @@ def main():
     plate_rows = config[f'{format}_plate_rows']
     plate_columns = config[f'{format}_plate_columns']
     repeats = config[f'repeats']
-    
+
 
     # Globals
     # Valued used to replace zeros with a values close to 0
@@ -101,7 +101,7 @@ def main():
     multiple_well_comparison_log_save_path = os.path.join(output_path, 'multiple_well_comparison_log.txt')
     print("Comparing multiple repeats")
     # Check that the user provided config makes sense
-    if len(file_df_mapping) == 1 and repeats == []:
+    if len(file_df_mapping) == 1 and (repeats == [] or all([len(item) == 1 for item in repeats])):
         err_text = 'No repeats were provided and only one file was provided. No analysis can be done across plates. Finishing the program.'
         multiple_well_comparison_log.append(err_text)
         print(err_text)
