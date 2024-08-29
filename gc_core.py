@@ -53,7 +53,7 @@ def get_experiment_growth_parameters(raw_data_df, log):
     
     # Genrate a list of all the keys to run _get_well_growth_parameters on using ProcessPoolExecutor
     # A reference to the dataframe is added to the keys list so from it can be used in the function along with the other parameters
-    items = itertools.product([raw_data_df], file_names, plate_names, well_row_indexes, well_column_indexes, [log])
+    items = itertools.product([raw_data_df], file_names, plate_names, well_row_indexes, well_column_indexes)
 
     # Get the amount of cores to use for multiprocessing
     cores_for_use = multiprocessing.cpu_count()
@@ -65,7 +65,13 @@ def get_experiment_growth_parameters(raw_data_df, log):
     # Convert results to a dataframe
     results_df = pd.DataFrame(results, columns=['file_name', 'plate_name', 'well_row_index', 'well_column_index' ,'is_valid', 'lag_end_time', 'lag_end_OD',
                                                 'max_population_gr_time', 'max_population_gr_OD', 'max_population_gr_slope',
-                                                'exponet_end_time', 'exponet_end_OD', 'carrying_capacity'])
+                                                'exponet_end_time', 'exponet_end_OD', 'carrying_capacity', 'min_doubling_time', 'log_msg'])
+
+    # Extract the error messages from the column into the list
+    log = results_df['log_msg'].tolist()
+
+    # Remove the 'log_msg' column from the DataFrame
+    results_df = results_df.drop('log_msg', axis=1)
 
     # Add the well key to the dataframe
     results_df['well_key'] = results_df.apply(lambda row: f'{gc_utils.convert_row_number_to_letter(row["well_row_index"])}{row["well_column_index"] + 1}', axis=1)
@@ -73,10 +79,11 @@ def get_experiment_growth_parameters(raw_data_df, log):
     # Reorder the columns so that the well_name is the third column
     results_df = results_df[['file_name', 'plate_name', 'well_row_index', 'well_column_index', 'well_key', 'is_valid', 'lag_end_time', 'lag_end_OD',
                             'max_population_gr_time', 'max_population_gr_OD', 'max_population_gr_slope',
-                            'exponet_end_time', 'exponet_end_OD', 'carrying_capacity']]
+                            'exponet_end_time', 'exponet_end_OD', 'carrying_capacity', 'min_doubling_time']]
+    
 
     results_df = results_df.set_index(['file_name', 'plate_name', 'well_row_index', 'well_column_index'])
-    return results_df.sort_index()
+    return results_df.sort_index(), log
 
 
 def _get_well_growth_parameters(item):
@@ -127,10 +134,10 @@ def _get_well_growth_parameters(item):
     file_name = item[1]
     plate_name = item[2]
     well_row_index = int(item[3])
-    well_column_index = int(item[4])
-    log = item[5]   
+    well_column_index = int(item[4])  
     well_data = df.xs((file_name, plate_name, well_row_index, well_column_index), level=["file_name", "plate_name", "well_row_index", "well_column_index"])
 
+    log = ''
     well_valid = True
 
     well_name = f'{gc_utils.convert_row_number_to_letter(well_row_index)}{well_column_index + 1}'
@@ -141,7 +148,7 @@ def _get_well_growth_parameters(item):
         well_data = well_data.rename(columns={'time': 'Time'})
         y0 = np.min(well_data.OD)
         k = np.max(well_data.OD)
-        # No justification for the guess values, they are just a guess.
+        # No justification for the guess values, they are just a guess and were observed to work well.
         # The fitting process will determine the best values for the parameters anyway, those are just to get the process started
         r = 0.1
         nu = 0.1
@@ -153,10 +160,11 @@ def _get_well_growth_parameters(item):
         models = curveball.models.fit_model(well_data, param_guess=guess ,PLOT=False, PRINT=False)
         # Change the name back to time
         well_data = well_data.rename(columns={'Time': 'time'})
+    # Fitting failed, no point in continuing
     except ValueError as e:
-        log.append(f'ValueError: {e} for well: {well_name} on plate: {plate_name} in file: {file_name}')
+        log = f'ValueError: {e} for well: {well_name} on plate: {plate_name} in file: {file_name}. Fitting failed'
         well_valid = False
-        return __dict_for_return(file_name, plate_name, well_row_index, well_column_index, well_valid, -1, -1, -1, -1, -1, -1, -1, -1)
+        return __dict_for_return(file_name, plate_name, well_row_index, well_column_index, well_valid, -1, -1, -1, -1, -1, -1, -1, -1, -1, log)
     # The model with the lowest BIC is the best fitting model and it's at index 0
     best_model = models[0]
 
@@ -168,7 +176,12 @@ def _get_well_growth_parameters(item):
     if np.isnan(lag_end_time):
         lag_end_time = -1
         lag_end_OD = -1
-        log.append(f'Exponenet begin time could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}')
+        tmp_err = f'Exponenet begin time could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}'
+        if log == '':
+            log = tmp_err
+        else:
+            log += f', {tmp_err}'
+        
         well_valid = False
     # if the exponent_begin_time is not nan then it means that the fitting was successful and the well data is valid, retriive the OD at the begining of the exponent phase
     else:
@@ -177,9 +190,14 @@ def _get_well_growth_parameters(item):
     # Save the carrying capacity of the population as determined by the model
     carrying_capacity = best_model.values['K']
     
-    # If the value is less thatn 0.1 then the well is invalid since the cells probably didn't grow
+    # If the value is less thatn 0.1 then the well is invalid since the cells probably didn't grow (this value is in terms of OD)
     if carrying_capacity < 0.1:
-        log.append(f'Carrying capacity is less than 0.1 for well: {well_name} on plate: {plate_name} in file: {file_name}, check the well data to see if no growth occured')
+        tmp_err = f'Carrying capacity is less than 0.1 for well: {well_name} on plate: {plate_name} in file: {file_name}, check the well data to see if no growth occured'
+        if log == '':
+            log = tmp_err
+        else:
+            log += f', {tmp_err}'
+
         carrying_capacity = -1
         exponet_end_OD = -1
         exponet_end_time = -1
@@ -190,7 +208,12 @@ def _get_well_growth_parameters(item):
         # Find the first time at which the ovserved OD values exceeded 95% of the carrying capacity
         exponet_end_index = gc_utils.get_first_index(well_data.OD, lambda item: item >= exponet_end_OD)
         if exponet_end_index is None:
-            log.append(f'Exponenet end time could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}')
+            tmp_err = f'Exponenet end time could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}'
+            if log == '':
+                log = tmp_err
+            else:
+                log += f', {tmp_err}'
+
             exponet_end_time = -1
             well_valid = False
         else:
@@ -199,29 +222,48 @@ def _get_well_growth_parameters(item):
         
     # Max slope calculation
     # Get the time and OD of the point with the max slope
-    max_population_gr_time, max_population_gr_OD, max_population_gr_slope, t2, y2, mu = curveball.models.find_max_growth(best_model)                
+    max_population_gr_time, max_population_gr_OD, max_population_gr_slope, t2, y2, mu = curveball.models.find_max_growth(best_model)            
     if np.isnan([max_population_gr_time, max_population_gr_OD, max_population_gr_slope]).any():
-        log.append(f'Max slope could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}, this probably means that the cells in the well did not grow')
+        tmp_err = f'Max slope could not be estimated for well: {well_name} on plate: {plate_name} in file: {file_name}, this probably means that the cells in the well did not grow'
+        if log == '':
+            log = tmp_err
+        else:
+            log += f', {tmp_err}'
+
         max_population_gr_time = -1
         max_population_gr_OD = -1
         max_population_gr_slope = -1        
         well_valid = False
+
+    min_doubling_time = curveball.models.find_min_doubling_time(best_model)
+    if np.isnan(min_doubling_time) or min_doubling_time > 5 or min_doubling_time < 0.5:
+        tmp_err = f'Min doubling time had an extreme value of: {min_doubling_time} in {well_name} on plate: {plate_name} in file: {file_name}, this probably means that the cells in the well did not grow'
+        if log == '':
+            log = tmp_err
+        else:
+            log += f', {tmp_err}'
+
+        max_population_gr_time = -1
+        max_population_gr_OD = -1
+        max_population_gr_slope = -1
+        well_valid = False
     
-    return __dict_for_return(file_name, plate_name, well_row_index, well_column_index, well_valid, lag_end_time, lag_end_OD, max_population_gr_time, max_population_gr_OD, max_population_gr_slope,
-                    exponet_end_time, exponet_end_OD, carrying_capacity)
+    return __dict_for_return(file_name, plate_name, well_row_index, well_column_index, well_valid, lag_end_time, lag_end_OD,
+                             max_population_gr_time, max_population_gr_OD, max_population_gr_slope ,exponet_end_time, exponet_end_OD, carrying_capacity, min_doubling_time, log)
 
 
 # for return from _get_well_growth_parameters
 def __dict_for_return(file_name, plate, well_row_index, well_column_index, is_valid, lag_end_time, lag_end_OD, max_population_gr_time, max_population_gr_OD, max_population_gr_slope,
-                 exponet_end_time, exponet_end_OD, carrying_capacity):
+                 exponet_end_time, exponet_end_OD, carrying_capacity, min_doubling_time, log_txt):
     return {
         'file_name': file_name, 'plate_name': plate, 'well_row_index': well_row_index, 'well_column_index': well_column_index, 'is_valid': is_valid,
         'lag_end_time': lag_end_time, 'lag_end_OD': lag_end_OD, 'max_population_gr_time': max_population_gr_time, 'max_population_gr_OD': max_population_gr_OD,
-        'max_population_gr_slope': max_population_gr_slope, 'exponet_end_time': exponet_end_time, 'exponet_end_OD': exponet_end_OD, 'carrying_capacity': carrying_capacity
+        'max_population_gr_slope': max_population_gr_slope, 'exponet_end_time': exponet_end_time, 'exponet_end_OD': exponet_end_OD, 'carrying_capacity': carrying_capacity,
+        'min_doubling_time': min_doubling_time, 'log_msg' : log_txt
     }
 
 
-def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, err_log):
+def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition_file_map ,err_log):
     '''
     Desrciption
     -----------
@@ -265,20 +307,23 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, err_log):
 
     # Get the number of hours between each two measurement
     # technical repeats run on the same program in the stacker and therefore will have the same gaps between two measurments
-    # take the last time and devide it by the amount of measurements done that is the length of the time array
-    
+    # take the last time and divide it by the amount of measurements done that is the length of the time array
     single_well_measurement_number = reps_raw_data[file_names[0]].xs((file_names[0], plate_names[0], well_row_indexes[0], well_column_indexes[0]),
                                                                      level=["file_name", "plate_name", "well_row_index", "well_column_index"]).shape[0]
 
     # Needed later for CC shift in hours
     time_gap_hours_between_measurements = list(reps_raw_data[file_names[0]].time)[-1] / single_well_measurement_number
 
-    # Generate the indexes for the pairwise CC test
-    file_name_pairs = list(itertools.combinations(range(0, len(file_names)), 2))
+    # Generate the file name pairs per condition for the pairwise CC test
+    file_name_pairs = []
+    for _, files_in_condition in condition_file_map.items():
+        file_name_pairs.extend(itertools.combinations(files_in_condition, 2))
 
-    # If there is only one file then the list will be empty and to create the later combinations add the file name to the list
-    if len(file_name_pairs) == 0:
-        file_name_pairs.append((file_names[0], file_names[0]))
+        # If there is only one element in the files_in_condition than the combination function can't make
+        # non repeated  pairs so add them by hand
+        if len(files_in_condition) == 1:
+            file_name_pairs.append((files_in_condition[0], files_in_condition[0]))
+
     
     repeat_pairs = []
     for repeat_group in repeats:
@@ -327,7 +372,7 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, err_log):
                                                                 level=["file_name", "plate_name", "well_row_index", "well_column_index"])
         
 
-        res = __compare_replicates(well_A_data['OD'], well_B_data['OD'], time_gap_hours_between_measurements)
+        res = __compare_replicates(well_A_data['OD'].values, well_B_data['OD'].values, time_gap_hours_between_measurements)
 
         export_data.append(
             {
@@ -358,6 +403,8 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, err_log):
                 'well_B_max_population_growth_rate_OD': well_B_summary_data.max_population_gr_OD.iloc[0],
                 'well_A_max_population_growth_rate_slope': well_A_summary_data.max_population_gr_slope.iloc[0],
                 'well_B_max_population_growth_rate_slope': well_B_summary_data.max_population_gr_slope.iloc[0],
+                'well_A_min_doubling_time': well_A_summary_data.min_doubling_time.iloc[0],
+                'well_B_min_doubling_time': well_B_summary_data.min_doubling_time.iloc[0],
 
                 'CC_score': res['CC_score'],
                 'max_CC_score' : res['max_CC_score'],
@@ -365,7 +412,7 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, err_log):
                 'upper_limit_CC_score': res['upper_limit_CC_score'],
             }
         )
-
+    
     comparison_df = pd.DataFrame(export_data)
     comparison_df = comparison_df.set_index(['file_name_A', 'file_name_B', 'plate_name_A', 'plate_name_B', 'well_row_index', 'well_column_index'])
 
