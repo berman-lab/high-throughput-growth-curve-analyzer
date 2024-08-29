@@ -185,6 +185,8 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
     # Before changing to this mode the program would crash after the creation of about 250 graphs
     matplotlib.use("Agg")
 
+    plt.style.use('ggplot')
+
     # Styles
     point_size = 50
     alpha = 0.6
@@ -201,36 +203,36 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
     for file_name, plate_name, well_row_index, well_column_index in itertools.product(file_names ,plate_names, well_row_indexes, well_column_indexes):
         well_raw_data = raw_data.xs((file_name, plate_name, well_row_index, well_column_index), level=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])
         well_summary_data = (summary_data.xs((file_name, plate_name, well_row_index, well_column_index), level=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])).iloc[0,:]
-        # Setup axis and the figure objects
+        
+
         fig, ax = plt.subplots()
         ax.set_title(title)
         ax.set_xlabel('Time [hours]')
         ax.set_ylabel('OD600')
 
-        # Plot the main graph
-        ax.plot(well_raw_data["time"], well_raw_data["OD"])
+        ax.plot(well_raw_data["time"], well_raw_data["OD"], color='black')
         
         # If the well is valid graph it with the data from the fitting procedure, otherwise only graph time vs OD as an aid for seeing what went wrong
         if well_summary_data["is_valid"]:
             lag_end_time, lag_end_OD = well_summary_data["lag_end_time"], well_summary_data["lag_end_OD"]
-            # plot the point with the label
-            ax.scatter([lag_end_time], [lag_end_OD], s=point_size ,alpha=alpha, 
+            # lag data
+            ax.scatter([lag_end_time], [lag_end_OD], s=point_size ,alpha=alpha, c=['purple'], marker='s',
                         label= f'end of leg phase: {str(round(lag_end_time, decimal_percision))} hours')
 
-            # Max population growth rate plotting
+            # Max population growth rate
             max_population_gr_time, max_population_gr_OD, max_population_gr_slope = well_summary_data["max_population_gr_time"], well_summary_data["max_population_gr_OD"], well_summary_data["max_population_gr_slope"]
             # Plot the point and the linear function matching the max population growth rate
-            ax.axline((max_population_gr_time, max_population_gr_OD), slope=max_population_gr_slope, color='firebrick', linestyle=':', label=f'maximum population growth rate: {(round(max_population_gr_slope, decimal_percision))}')
+            ax.axline((max_population_gr_time, max_population_gr_OD), slope=max_population_gr_slope, color='blue', linestyle=':')
             # plot the point on the graph at which this occures
-            ax.scatter([max_population_gr_time], [max_population_gr_OD], c=['firebrick'], s=point_size, alpha=alpha)
+            ax.scatter([max_population_gr_time], [max_population_gr_OD], c=['darkblue'], s=point_size, alpha=alpha, label=f'Min doubling time: {round(well_summary_data["min_doubling_time"], decimal_percision)} hours')
 
             # End of exponential phase
             exponet_end_time, exponet_end_OD = well_summary_data["exponet_end_time"], well_summary_data["exponet_end_OD"]
             # plot the point with the label
-            ax.scatter([exponet_end_time], [exponet_end_OD], c=["darkgreen"], s=point_size ,alpha=alpha, label=f'95% of growth: {str(round(exponet_end_time, decimal_percision))} hours')
+            ax.scatter([exponet_end_time], [exponet_end_OD], c=["brown"], marker='d' ,s=point_size ,alpha=alpha, label=f'95% of growth: {str(round(exponet_end_time, decimal_percision))} hours')
 
             carrying_capacity = well_summary_data["carrying_capacity"]
-            ax.axhline(y=carrying_capacity, color='black', linestyle=':', label=f'Carrying capacity: {(round(carrying_capacity, decimal_percision))}')
+            ax.axhline(y=carrying_capacity, color='black', linestyle='dashdot', label=f'Carrying capacity: {(round(carrying_capacity, decimal_percision))}')
 
             ax.legend(loc="lower right")
         
