@@ -19,7 +19,7 @@ def main():
     parser.add_argument('-in', '--input_folder', help='The path to the folder with the measurements', required=True)
     parser.add_argument('-out', '--output_folder', help='The path to the folder under which the output will be saved', required=True)
     parser.add_argument('-f', '--format', help='The layout of the plates (96, 384)', required=True)
-    parser.add_argument('-g', '--is_create_graphs', help='should single well graphs be generated or only tables', default=False ,action='store_true')
+    parser.add_argument('-g', '--is_create_graphs', help='should single well graphs be generated or only tables and summary graphs', default=False ,action='store_true')
     
     args = parser.parse_args()
     input_path = os.path.normcase(args.input_folder)
@@ -35,8 +35,9 @@ def main():
     
     plate_rows = config[f'{format}_plate_rows']
     plate_columns = config[f'{format}_plate_columns']
-    repeats = config[f'repeats']
-
+    plate_repeats = config['plate_repeats']
+    condition_file_map = config['condition_file_map']
+    raw_data_file_extension = config['file_extension']
 
     # Globals
     # Valued used to replace zeros with a values close to 0
@@ -46,10 +47,10 @@ def main():
 
     # The amount of digits after the decimal point to show in plots
     global DECIMAL_PERCISION_IN_PLOTS
-    DECIMAL_PERCISION_IN_PLOTS = 3 
+    DECIMAL_PERCISION_IN_PLOTS = 1
 
     # Get all the files from the input directory
-    files_for_analysis = gc_utils.get_files_from_directory(input_path, "xlsx")
+    files_for_analysis = gc_utils.get_files_from_directory(input_path, raw_data_file_extension)
 
     file_import_log = []
     file_import_log_save_path = os.path.join(output_path, 'file_import_log.txt')
@@ -69,13 +70,16 @@ def main():
 
     growth_parameters_log = []
     growth_parameters_log_save_path = os.path.join(output_path, 'growth_parameters_log.txt')
-    print("Calculating growth parameters")
+    print("Calculating growth parameters for each plate and well")
     summary_dfs = {}
     # Caclulate growth parameters for each experiment
     for file_name in file_df_mapping:
-        summary_dfs[file_name] = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], growth_parameters_log)
+        summary_dfs[file_name], curr_log = gc_core.get_experiment_growth_parameters(file_df_mapping[file_name], growth_parameters_log)
+        growth_parameters_log += curr_log
         gc_io.save_dataframe_to_csv(summary_dfs[file_name], output_path, f'{file_name}_summary_data')
     
+    # Remove all the empty indexes from the list before saving
+    growth_parameters_log = list(filter(lambda x: x != '', growth_parameters_log))
     gc_utils.save_log(growth_parameters_log, growth_parameters_log_save_path)
 
 
@@ -101,13 +105,13 @@ def main():
     multiple_well_comparison_log_save_path = os.path.join(output_path, 'multiple_well_comparison_log.txt')
     print("Comparing multiple repeats")
     # Check that the user provided config makes sense
-    if len(file_df_mapping) == 1 and (repeats == [] or all([len(item) == 1 for item in repeats])):
+    if len(file_df_mapping) == 1 and (plate_repeats == [] or all([len(item) == 1 for item in plate_repeats])):
         err_text = 'No repeats were provided and only one file was provided. No analysis can be done across plates. Finishing the program.'
         multiple_well_comparison_log.append(err_text)
         print(err_text)
         return
-
-    variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, repeats ,file_import_log)
+    
+    variation_matrix = gc_core.get_reps_variation_data(file_df_mapping, summary_dfs, plate_repeats, condition_file_map, multiple_well_comparison_log)
 
     variation_matrix_unidexed = variation_matrix.reset_index()
     variation_matrix_unidexed.to_csv(os.path.join(output_path, f'{list(file_df_mapping.keys())[0]}-{list(file_df_mapping.keys())[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
