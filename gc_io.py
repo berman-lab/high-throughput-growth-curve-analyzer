@@ -241,5 +241,70 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
         plt.close("all")
 
 
+def import_previous_run_data(output_path):
+    '''
+    Desrciption
+    -----------
+    Read the content the output file with the results of a previous run.
+    The folder must include the multiple repeat comprison df with it's originial name,
+    At least one raw data df (as saved from the read_tecan_stacker_xlsx or any future version of the function that outputs the same file structure)
+    and the same number of summary files belonging to the same original file. If any of these assumptions is not true the function will raise a value error.
+    
+    Parameters
+    ----------
+    output_path : str
+        The path to the output file with the results of a previous run
+    
+    Returns
+    -------
+    file_raw_data_df_mapping : dictionary
+        The name of the file as the key and the raw data from the file as a pandas.DataFrame as the value
+    file_summary_df_mapping : dictionary
+        The name of the file as the key and the summary data from get_experiment_growth_parameters as a pandas.DataFrame as the value
+    variation_matrix : pandas.DataFrame
+        The muliple repeat comprison table as returned from get_reps_variation_data
+    '''
+    
+    # Initialize the dictionaries for raw data and summary data
+    file_raw_data_df_mapping = {}
+    file_summary_df_mapping = {}
+    variation_matrix = None
+    
+    # List all files in the specified directory
+    all_files = os.listdir(output_path)
+    
+    # Filter files based on the required suffix
+    raw_data_files = [f for f in all_files if f.endswith('_raw_data.csv')]
+    summary_data_files = [f for f in all_files if f.endswith('_summary_data.csv')]
+    variation_data_files = [f for f in all_files if f.endswith('_coupled_reps_data.csv')]
+    
+    # Check that the number of raw data files matches the number of summary data files
+    if len(raw_data_files) != len(summary_data_files):
+        raise ValueError("The number of raw data files does not match the number of summary data files.")
+    
+    # Check that there is exactly one variation matrix file
+    if len(variation_data_files) != 1:
+        raise ValueError("There must be exactly one '_coupled_reps_data.csv' file.")
+    
+    # Process raw data files
+    for raw_file in raw_data_files:
+        file_base_name = raw_file.replace('_raw_data.csv', '')
+        raw_data_path = os.path.join(output_path, raw_file)
+        file_raw_data_df_mapping[file_base_name] = pd.read_csv(raw_data_path)
+    
+    # Process summary data files
+    for summary_file in summary_data_files:
+        file_base_name = summary_file.replace('_summary_data.csv', '')
+        summary_data_path = os.path.join(output_path, summary_file)
+        file_summary_df_mapping[file_base_name] = pd.read_csv(summary_data_path)
+    
+    # Load the variation matrix
+    variation_matrix_path = os.path.join(output_path, variation_data_files[0])
+    variation_matrix = pd.read_csv(variation_matrix_path)
+    
+    
+    return file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix
+
+
 def create_reps_avarage_graphs(reps, averaged_reps, output_path):
     return 1
