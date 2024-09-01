@@ -263,6 +263,69 @@ def __dict_for_return(file_name, plate, well_row_index, well_column_index, is_va
     }
 
 
+def __generate_all_combanations_for_well_pairs(repeats, condition_file_map, plate_names, well_row_indexes, well_column_indexes):
+        # Generate the file name pairs per condition for the pairwise CC test
+    file_name_pairs = []
+    for _, files_in_condition in condition_file_map.items():
+        file_name_pairs.extend(itertools.combinations(files_in_condition, 2))
+
+        # If there is only one element in the files_in_condition than the combination function can't make
+        # non repeated  pairs so add them by hand
+        if len(files_in_condition) == 1:
+            file_name_pairs.append((files_in_condition[0], files_in_condition[0]))
+
+    
+    repeat_pairs = []
+    for repeat_group in repeats:
+        repeat_pairs.append(list(itertools.combinations(repeat_group, 2))) 
+
+    # If there are no repeats then the list will be empty and to create the later combinations add the file name to the list
+    # since each file is a repeat of itself and therefore compare the same plates to one another
+    if len(repeat_pairs) == 0:
+        repeat_pairs = list(zip(plate_names, plate_names))
+
+    file_names_repeats_pairs_combinations = []
+    for repeat_pair in repeat_pairs:
+        file_names_repeats_pairs_combinations.append(list(itertools.product(file_name_pairs, repeat_pair)))
+
+
+    file_names_repeats_pairs_combinations = list(itertools.chain.from_iterable(file_names_repeats_pairs_combinations))
+
+
+    # Prepare the well indexes of the well rows and columns
+    well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
+
+    
+    return list(itertools.product(file_names_repeats_pairs_combinations, well_indexes))
+
+
+def __resolve_well_pair_combination_and_filter_dfs(repeat_condition, raw_data, summary_data):
+    file_name_A = repeat_condition[0][0][0]
+    file_name_B = repeat_condition[0][0][1]
+
+    plate_name_A = repeat_condition[0][1][0]
+    plate_name_B = repeat_condition[0][1][1]
+
+    well_index = repeat_condition[1]
+    well_row_index = well_index[0]
+    well_column_index = well_index[1]
+
+    # Get the data for the two wells
+    well_A_raw_data = raw_data[file_name_A].xs((file_name_A, plate_name_A, well_row_index, well_column_index),
+                                                            level=["file_name", "plate_name", "well_row_index", "well_column_index"])
+    
+    well_A_summary_data = summary_data[file_name_A].xs((file_name_A, plate_name_A, well_row_index, well_column_index),
+                                                            level=["file_name", "plate_name", "well_row_index", "well_column_index"])
+
+    well_B_raw_data = raw_data[file_name_B].xs((file_name_B, plate_name_B, well_row_index, well_column_index),
+                                                            level=["file_name", "plate_name", "well_row_index", "well_column_index"])
+    
+    well_B_summary_data = summary_data[file_name_B].xs((file_name_B, plate_name_B, well_row_index, well_column_index),
+                                                            level=["file_name", "plate_name", "well_row_index", "well_column_index"])
+    
+    return file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data
+
+
 def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition_file_map ,err_log):
     '''
     Desrciption
@@ -310,69 +373,18 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition
     # take the last time and divide it by the amount of measurements done that is the length of the time array
     single_well_measurement_number = reps_raw_data[file_names[0]].xs((file_names[0], plate_names[0], well_row_indexes[0], well_column_indexes[0]),
                                                                      level=["file_name", "plate_name", "well_row_index", "well_column_index"]).shape[0]
-
+    
     # Needed later for CC shift in hours
     time_gap_hours_between_measurements = list(reps_raw_data[file_names[0]].time)[-1] / single_well_measurement_number
 
-    # Generate the file name pairs per condition for the pairwise CC test
-    file_name_pairs = []
-    for _, files_in_condition in condition_file_map.items():
-        file_name_pairs.extend(itertools.combinations(files_in_condition, 2))
-
-        # If there is only one element in the files_in_condition than the combination function can't make
-        # non repeated  pairs so add them by hand
-        if len(files_in_condition) == 1:
-            file_name_pairs.append((files_in_condition[0], files_in_condition[0]))
-
-    
-    repeat_pairs = []
-    for repeat_group in repeats:
-        repeat_pairs.append(list(itertools.combinations(repeat_group, 2))) 
-
-    # If there are no repeats then the list will be empty and to create the later combinations add the file name to the list
-    # since each file is a repeat of itself and therefore compare the same plates to one another
-    if len(repeat_pairs) == 0:
-        repeat_pairs = list(zip(plate_names, plate_names))
-
-    file_names_repeats_pairs_combinations = []
-    for repeat_pair in repeat_pairs:
-        file_names_repeats_pairs_combinations.append(list(itertools.product(file_name_pairs, repeat_pair)))
-
-
-    file_names_repeats_pairs_combinations = list(itertools.chain.from_iterable(file_names_repeats_pairs_combinations))
-
-
-    # Prepare the well indexes of the well rows and columns
-    well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
-
-    final_repeat_combinations = list(itertools.product(file_names_repeats_pairs_combinations, well_indexes))
+    final_repeat_combinations = __generate_all_combanations_for_well_pairs(repeats, condition_file_map, plate_names, well_row_indexes, well_column_indexes)
 
     for repeat_condition in final_repeat_combinations:
-        file_name_A = repeat_condition[0][0][0]
-        file_name_B = repeat_condition[0][0][1]
-
-        plate_name_A = repeat_condition[0][1][0]
-        plate_name_B = repeat_condition[0][1][1]
-
-        well_index = repeat_condition[1]
-        well_row_index = well_index[0]
-        well_column_index = well_index[1]
-
-        # Get the data for the two wells
-        well_A_data = reps_raw_data[file_name_A].xs((file_name_A, plate_name_A, well_row_index, well_column_index),
-                                                                level=["file_name", "plate_name", "well_row_index", "well_column_index"])
         
-        well_A_summary_data = reps_summary_data[file_name_A].xs((file_name_A, plate_name_A, well_row_index, well_column_index),
-                                                                level=["file_name", "plate_name", "well_row_index", "well_column_index"])
+        file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data = __resolve_well_pair_combination_and_filter_dfs(
+            repeat_condition, reps_raw_data, reps_summary_data)
 
-        well_B_data = reps_raw_data[file_name_B].xs((file_name_B, plate_name_B, well_row_index, well_column_index),
-                                                               level=["file_name", "plate_name", "well_row_index", "well_column_index"])
-        
-        well_B_summary_data = reps_summary_data[file_name_B].xs((file_name_B, plate_name_B, well_row_index, well_column_index),
-                                                                level=["file_name", "plate_name", "well_row_index", "well_column_index"])
-        
-
-        res = __compare_replicates(well_A_data['OD'].values, well_B_data['OD'].values, time_gap_hours_between_measurements)
+        res = __compare_replicates(well_A_raw_data['OD'].values, well_B_raw_data['OD'].values, time_gap_hours_between_measurements)
 
         export_data.append(
             {
@@ -380,9 +392,9 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition
                 'file_name_B': file_name_B,
                 'plate_name_A': plate_name_A,
                 'plate_name_B': plate_name_B,
-                'well_row_index': well_row_index,
-                'well_column_index': well_column_index,
-                'well_key': well_A_data.well_key.iloc[0],
+                'well_row_index': well_A_raw_data.well_row_index.iloc[0],
+                'well_column_index': well_A_raw_data.well_column_index.iloc[0],
+                'well_key': well_A_raw_data.well_key.iloc[0],
                 'is_well_A_valid': well_A_summary_data.is_valid.iloc[0],
                 'is_well_B_valid': well_B_summary_data.is_valid.iloc[0],
                 'relative_CC_score' : res['relative_CC_score'],
@@ -452,5 +464,35 @@ def __compare_replicates(rep1_data, rep2_data, time_gap_hours_between_measuremen
     }
 
 
-def get_averaged_ExperimentData(reps_data):
-    return 1
+def multiple_reps_and_files_summary(condition_file_map, repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix):
+    '''
+    Desrciption
+    -----------
+    Fill this in
+    
+    Parameters
+    ----------
+    
+    Returns
+    -------
+    '''
+    
+    plate_namesA = pd.unique(variation_matrix.index.get_level_values('plate_name_A'))
+
+    # Continue fixing
+    plate_namesB = pd.unique(variation_matrix['plate_name_B'])
+
+    plate_names = set(plate_namesA) | set(plate_namesB)
+
+    well_column_indexes = pd.unique(variation_matrix['well_column_index'])
+    well_row_indexes = pd.unique(variation_matrix['well_row_index'])
+
+
+    combinations = __generate_all_combanations_for_well_pairs(repeats, condition_file_map, plate_names, well_row_indexes, well_column_indexes)
+
+
+    for well_pair in combinations:
+        file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data = __resolve_well_pair_combination_and_filter_dfs(
+            well_pair, file_raw_data_df_mapping, file_summary_df_mapping)
+        
+        print('111')
