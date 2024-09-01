@@ -117,6 +117,7 @@ def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
     # Sort the index
     return raw_data_df.sort_index()
 
+
 def save_dataframe_to_csv(df, output_file_path, file_name):
     '''
     Description
@@ -290,21 +291,19 @@ def import_previous_run_data(output_path):
     for raw_file in raw_data_files:
         file_base_name = raw_file.replace('_raw_data.csv', '')
         raw_data_path = os.path.join(output_path, raw_file)
-        file_raw_data_df_mapping[file_base_name] = pd.read_csv(raw_data_path)
+        # Index the df the same way it was indexed intially
+        file_raw_data_df_mapping[file_base_name] = pd.read_csv(raw_data_path).set_index(["file_name", "plate_name", "well_row_index", "well_column_index"])
     
     # Process summary data files
     for summary_file in summary_data_files:
         file_base_name = summary_file.replace('_summary_data.csv', '')
         summary_data_path = os.path.join(output_path, summary_file)
-        file_summary_df_mapping[file_base_name] = pd.read_csv(summary_data_path)
+        file_summary_df_mapping[file_base_name] = pd.read_csv(summary_data_path).set_index(["file_name", "plate_name", "well_row_index", "well_column_index"])
     
     # Load the variation matrix
     variation_matrix_path = os.path.join(output_path, variation_data_files[0])
-    variation_matrix = pd.read_csv(variation_matrix_path)
+    variation_matrix = pd.read_csv(variation_matrix_path).set_index(['file_name_A', 'file_name_B', 'plate_name_A', 'plate_name_B', 'well_row_index', 'well_column_index'])
     
-    
+
+
     return file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix
-
-
-def create_reps_avarage_graphs(reps, averaged_reps, output_path):
-    return 1
