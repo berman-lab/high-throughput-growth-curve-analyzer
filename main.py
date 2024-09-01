@@ -124,7 +124,10 @@ def main():
 
 
     # The data is in the needed objects, we can use it for the 
-    #averaged_rep = gc_core.get_averaged_ExperimentData(file_df_mapping, summary_dfs, repeats, log)
+    multiple_reps_and_files_summary_result = gc_core.multiple_reps_and_files_summary(condition_file_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
+
+    multiple_reps_and_files_summary_result.to_csv(os.path.join(output_path, 'multiple_reps_and_files_summary_result.csv'), index=False, encoding='utf-8')
+
     # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
 
 
