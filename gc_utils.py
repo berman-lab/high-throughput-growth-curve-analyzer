@@ -7,6 +7,7 @@ def save_log(log, path):
     with open(path, 'w') as file:
         file.write('\n'.join(log))
 
+
 def convert_row_letter_to_number(row_letter):
     letters = {'A': 0, 'B': 1, 'C': 2, 'D': 3, 'E':4, 'F':5, 'G':6, 'H':7, 'I':8, 'J':9, 'K':10, 'L': 11, 'M':12, 'N':13, 'O':14, 'P':15}
     return letters[row_letter]
@@ -51,3 +52,17 @@ def get_first_index(iterable, condition=lambda x: True):
     for i, x in enumerate(iterable):
         if condition(x):
             return i
+        
+
+def reverse_dict_key_values(input_dict):
+    # Create an empty dictionary to store the reversed key-value pairs
+    reversed_dict = {}
+    
+    # Iterate over the original dictionary's items
+    for key, value_list in input_dict.items():
+        # Iterate over each value in the list associated with the key
+        for value in value_list:
+            # Add the value as a key in the new dictionary and set its value as the original key
+            reversed_dict[value] = key
+    
+    return reversed_dict
