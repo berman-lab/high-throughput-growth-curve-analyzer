@@ -264,7 +264,7 @@ def __dict_for_return(file_name, plate, well_row_index, well_column_index, is_va
 
 
 def __generate_all_combanations_for_well_pairs(repeats, condition_file_map, plate_names, well_row_indexes, well_column_indexes):
-        # Generate the file name pairs per condition for the pairwise CC test
+    # Generate the file name pairs per condition for the pairwise CC test
     file_name_pairs = []
     for _, files_in_condition in condition_file_map.items():
         file_name_pairs.extend(itertools.combinations(files_in_condition, 2))
@@ -323,7 +323,7 @@ def __resolve_well_pair_combination_and_filter_dfs(repeat_condition, raw_data, s
     well_B_summary_data = summary_data[file_name_B].xs((file_name_B, plate_name_B, well_row_index, well_column_index),
                                                             level=["file_name", "plate_name", "well_row_index", "well_column_index"])
     
-    return file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data
+    return well_row_index, well_column_index, file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data
 
 
 def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition_file_map ,err_log):
@@ -464,7 +464,7 @@ def __compare_replicates(rep1_data, rep2_data, time_gap_hours_between_measuremen
     }
 
 
-def multiple_reps_and_files_summary(condition_file_map, repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix):
+def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix):
     '''
     Desrciption
     -----------
@@ -477,22 +477,37 @@ def multiple_reps_and_files_summary(condition_file_map, repeats, file_raw_data_d
     -------
     '''
     
-    plate_namesA = pd.unique(variation_matrix.index.get_level_values('plate_name_A'))
+    plate_names_A = pd.unique(variation_matrix.index.get_level_values('plate_name_A'))
+    plate_names_B = pd.unique(variation_matrix.index.get_level_values('plate_name_B'))
 
-    # Continue fixing
-    plate_namesB = pd.unique(variation_matrix['plate_name_B'])
+    plate_names = set(plate_names_A) | set(plate_names_B)
 
-    plate_names = set(plate_namesA) | set(plate_namesB)
-
-    well_column_indexes = pd.unique(variation_matrix['well_column_index'])
-    well_row_indexes = pd.unique(variation_matrix['well_row_index'])
+    well_column_indexes = pd.unique(variation_matrix.index.get_level_values('well_column_index'))
+    well_row_indexes = pd.unique(variation_matrix.index.get_level_values('well_row_index'))
 
 
-    combinations = __generate_all_combanations_for_well_pairs(repeats, condition_file_map, plate_names, well_row_indexes, well_column_indexes)
+    variation_matrix['condition'] = variation_matrix.index.get_level_values('file_name_A').map(file_condition_map)
 
+    well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
+    condition_wells_combinations = list(itertools.product(pd.unique(variation_matrix['condition']), well_indexes))
 
-    for well_pair in combinations:
-        file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data = __resolve_well_pair_combination_and_filter_dfs(
-            well_pair, file_raw_data_df_mapping, file_summary_df_mapping)
+    for condition_well_combination in condition_wells_combinations:
         
-        print('111')
+        curr_condition = condition_well_combination[0]
+        well_row_index = condition_well_combination[1][0]
+        well_column_index = condition_well_combination[1][1]
+
+        variation_matrix_current_well = variation_matrix.xs((well_row_index, well_column_index), level=['well_row_index', 'well_column_index'])
+
+        variation_matrix_current_well_condition = variation_matrix_current_well.loc[
+            (variation_matrix_current_well['condition'] == curr_condition) &
+            ((variation_matrix_current_well['is_well_A_valid'] == True) & (variation_matrix_current_well['is_well_B_valid'] == True)) &
+            (variation_matrix_current_well['relative_CC_score'] > 0.5)
+        ]
+
+        print(variation_matrix_current_well_condition)
+
+        # TODO: continue here and check why am I not getting anything under SDC_pH5_rep_1 plate 1.1 or 1.2 or 1.3 - there are valied reps that shold go through the filter
+        for curr_plate_repeats in plate_repeats:
+            print(curr_plate_repeats)
+            print('aaa')
