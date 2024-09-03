@@ -41,6 +41,11 @@ def main():
     condition_file_map = config['condition_file_map']
     raw_data_file_extension = config['file_extension']
 
+
+    # Create the file to condiotion map too
+    file_condition_map = gc_utils.reverse_dict_key_values(condition_file_map)
+
+
     # Globals
     # Valued used to replace zeros with a values close to 0
     # that will not cause errors when applaying log to the data
@@ -124,7 +129,7 @@ def main():
 
 
     # The data is in the needed objects, we can use it for the 
-    multiple_reps_and_files_summary_result = gc_core.multiple_reps_and_files_summary(condition_file_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
+    multiple_reps_and_files_summary_result = gc_core.multiple_reps_and_files_summary(condition_file_map, file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
 
     multiple_reps_and_files_summary_result.to_csv(os.path.join(output_path, 'multiple_reps_and_files_summary_result.csv'), index=False, encoding='utf-8')
 
