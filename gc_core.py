@@ -498,6 +498,7 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
         well_column_index = condition_well_combination[1][1]
 
         variation_matrix_current_well = variation_matrix.xs((well_row_index, well_column_index), level=['well_row_index', 'well_column_index'])
+           
 
         variation_matrix_current_well_condition = variation_matrix_current_well.loc[
             (variation_matrix_current_well['condition'] == curr_condition) &
@@ -505,9 +506,9 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
             (variation_matrix_current_well['relative_CC_score'] > 0.5)
         ]
 
-        print(variation_matrix_current_well_condition)
-
-        # TODO: continue here and check why am I not getting anything under SDC_pH5_rep_1 plate 1.1 or 1.2 or 1.3 - there are valied reps that shold go through the filter
         for curr_plate_repeats in plate_repeats:
-            print(curr_plate_repeats)
-            print('aaa')
+
+            variation_matrix_current_well_condition_plates = variation_matrix_current_well_condition.loc[
+                variation_matrix_current_well_condition.index.get_level_values('plate_name_A').isin(curr_plate_repeats) |
+                variation_matrix_current_well_condition.index.get_level_values('plate_name_B').isin(curr_plate_repeats)
+            ]
