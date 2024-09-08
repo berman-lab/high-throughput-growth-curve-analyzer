@@ -127,6 +127,9 @@ def main():
         file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix = gc_io.import_previous_run_data(output_path)
         print(f"Import succesful, imported {file_raw_data_df_mapping.keys()} raw data and summary data and the multiple files comprison table")
 
+    # For meeting with Judy and also bring some examples
+    # gc_io.plot_dist(variation_matrix['relative_CC_score'])
+    # gc_io.plot_dist(variation_matrix['max_CC_score_shift_in_hours'])
 
     # The data is in the needed objects, we can use it for the 
     multiple_reps_and_files_summary_result = gc_core.multiple_reps_and_files_summary(condition_file_map, file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
