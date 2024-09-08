@@ -464,6 +464,10 @@ def __compare_replicates(rep1_data, rep2_data, time_gap_hours_between_measuremen
     }
 
 
+def __flatten_df_dictionary(dict_df):
+    return pd.concat(dict_df.values(), axis=0)
+
+
 def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix):
     '''
     Desrciption
@@ -477,6 +481,16 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
     -------
     '''
     
+    all_raw_data = __flatten_df_dictionary(file_raw_data_df_mapping)
+    all_summary_data = __flatten_df_dictionary(file_summary_df_mapping)
+
+
+    raw_data_dfs_paased_qc = []
+
+    summary_dfs_passed_qc = []
+    summary_dfs_failed_qc = []
+
+
     plate_names_A = pd.unique(variation_matrix.index.get_level_values('plate_name_A'))
     plate_names_B = pd.unique(variation_matrix.index.get_level_values('plate_name_B'))
 
@@ -500,15 +514,57 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
         variation_matrix_current_well = variation_matrix.xs((well_row_index, well_column_index), level=['well_row_index', 'well_column_index'])
            
 
-        variation_matrix_current_well_condition = variation_matrix_current_well.loc[
+        variation_matrix_current_well_condition_valid_wells = variation_matrix_current_well.loc[
             (variation_matrix_current_well['condition'] == curr_condition) &
             ((variation_matrix_current_well['is_well_A_valid'] == True) & (variation_matrix_current_well['is_well_B_valid'] == True)) &
-            (variation_matrix_current_well['relative_CC_score'] > 0.5)
+            (variation_matrix_current_well['relative_CC_score'] >= 0.8)
+        ]
+
+        # TODO: Use this to get the invalid replicas from all_summary_data
+        variation_matrix_current_well_condition_invalid_wells = variation_matrix_current_well.loc[
+            (variation_matrix_current_well['condition'] == curr_condition) &
+            ((variation_matrix_current_well['is_well_A_valid'] == False) | (variation_matrix_current_well['is_well_B_valid'] == False)) &
+            (variation_matrix_current_well['relative_CC_score'] < 0.8)
         ]
 
         for curr_plate_repeats in plate_repeats:
+            
+            # Remove at the end of development of this part
+            gc_utils.clear_console()
 
-            variation_matrix_current_well_condition_plates = variation_matrix_current_well_condition.loc[
-                variation_matrix_current_well_condition.index.get_level_values('plate_name_A').isin(curr_plate_repeats) |
-                variation_matrix_current_well_condition.index.get_level_values('plate_name_B').isin(curr_plate_repeats)
+            variation_matrix_current_well_condition_plates = variation_matrix_current_well_condition_valid_wells.loc[
+                variation_matrix_current_well_condition_valid_wells.index.get_level_values('plate_name_A').isin(curr_plate_repeats) |
+                variation_matrix_current_well_condition_valid_wells.index.get_level_values('plate_name_B').isin(curr_plate_repeats)
             ]
+
+            # Bring the raw data rows from file A and file B and add them to a new dataframe
+            # For that first grab the values that will be used to filter
+            curr_file_name_A = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('file_name_A').values)
+            curr_file_name_B = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('file_name_B').values)
+            
+            
+            # Same thing for plate names
+            curr_plate_name_A = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('plate_name_A').values)
+            curr_plate_name_B = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('plate_name_B').values)
+        
+
+            # There are no valid entries for the replicate
+            if len(curr_file_name_A) == 0 or len(curr_file_name_B) == 0:
+                continue
+
+            
+            # Grab all the raw data with the combinations of file names and plate names
+            # There is a seperation between A and B replicas since it's possible that plateX from rep A was valid but not in rep B
+            replica_A_valid_combinations = list(itertools.product(curr_file_name_A, curr_plate_name_A))
+            replica_B_valid_combinations = list(itertools.product(curr_file_name_B, curr_plate_name_B))
+
+            current_valid_combinations = replica_A_valid_combinations + replica_B_valid_combinations
+
+            for valid_combination in current_valid_combinations:
+                raw_data_dfs_paased_qc.append(all_raw_data.xs((valid_combination[0], valid_combination[1], well_row_index, well_column_index),
+                                                              level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
+                
+                print(all_summary_data)
+
+                summary_dfs_passed_qc.append(all_summary_data.xs((valid_combination[0], valid_combination[1], well_row_index, well_column_index),
+                                                              level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
