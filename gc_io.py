@@ -4,6 +4,7 @@ import itertools
 import matplotlib
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import matplotlib.pyplot as plt
 
 import gc_utils
@@ -240,6 +241,39 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
         # Save the figure
         fig.savefig(os.path.join(output_path, f"well {well_summary_data['well_key']} from {plate_name} in {file_name}.png"))
         plt.close("all")
+
+def plot_dist(relative_CC_scores):
+# Set the figure size
+    plt.figure(figsize=(10, 10))
+    
+    # Plot the histogram using seaborn, without KDE for simplicity
+    hist_data = sns.histplot(relative_CC_scores, bins=20, kde=True, color="royalblue")
+    
+    # Calculate the total number of samples
+    total_samples = len(relative_CC_scores)
+    
+    # Add percentage labels for each bar
+    for patch in hist_data.patches:
+        # Get the height of the current bar (number of samples in the bin)
+        height = patch.get_height()
+        
+        # Calculate the percentage
+        percent = (height / total_samples) * 100
+        
+        # Place the text label
+        plt.text(patch.get_x() + patch.get_width() / 2, height + 0.5, 
+                 f'{percent:.1f}%', ha='center', fontsize=10, color='black')
+    
+    # Add title and labels
+    plt.title("Distribution of Relative CC Scores", fontsize=16)
+    plt.xlabel("Relative CC Scores", fontsize=14)
+    plt.ylabel("Frequency", fontsize=14)
+    
+    # Show grid for better readability
+    plt.grid(True, linestyle='--', alpha=0.7)
+    
+    # Show the plot
+    plt.show()
 
 
 def import_previous_run_data(output_path):
