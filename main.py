@@ -132,7 +132,7 @@ def main():
     # gc_io.plot_dist(variation_matrix['max_CC_score_shift_in_hours'])
 
     # The data is in the needed objects, we can use it for the 
-    multiple_reps_and_files_summary_result = gc_core.multiple_reps_and_files_summary(condition_file_map, file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
+    multiple_reps_and_files_summary_result = gc_core.multiple_reps_and_files_summary(condition_file_map ,file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
 
     multiple_reps_and_files_summary_result.to_csv(os.path.join(output_path, 'multiple_reps_and_files_summary_result.csv'), index=False, encoding='utf-8')
 
