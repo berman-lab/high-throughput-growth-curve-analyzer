@@ -485,86 +485,163 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
     all_summary_data = __flatten_df_dictionary(file_summary_df_mapping)
 
 
-    raw_data_dfs_paased_qc = []
+    # Create a Boolean mask for the invalid rows
+    invalid_mask =  (variation_matrix['relative_CC_score'] < 0.8) | \
+                    (variation_matrix['is_well_A_valid'] == False) | \
+                    (variation_matrix['is_well_B_valid'] == False)
 
-    summary_dfs_passed_qc = []
-    summary_dfs_failed_qc = []
+    # Get the invalid rows using the mask
+    invalid_replicates_variation_matrix_rows = variation_matrix.loc[invalid_mask]
+
+    # Get the valid rows using the complement of the invalid mask
+    valid_replicates_variation_matrix_rows = variation_matrix.loc[~invalid_mask]
+
+    all_valid_wells_raw_data, all_valid_wells_summary_data = __retrive_raw_data_and_summary_data_from_variation_matrix(valid_replicates_variation_matrix_rows, all_raw_data, all_summary_data)
+
+    all_invalid_wells_raw_data, all_invalid_wells_summary_data = __retrive_raw_data_and_summary_data_from_variation_matrix(invalid_replicates_variation_matrix_rows, all_raw_data, all_summary_data)
 
 
-    plate_names_A = pd.unique(variation_matrix.index.get_level_values('plate_name_A'))
-    plate_names_B = pd.unique(variation_matrix.index.get_level_values('plate_name_B'))
-
-    plate_names = set(plate_names_A) | set(plate_names_B)
-
-    well_column_indexes = pd.unique(variation_matrix.index.get_level_values('well_column_index'))
-    well_row_indexes = pd.unique(variation_matrix.index.get_level_values('well_row_index'))
+    return 1
 
 
-    variation_matrix['condition'] = variation_matrix.index.get_level_values('file_name_A').map(file_condition_map)
 
-    well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
-    condition_wells_combinations = list(itertools.product(pd.unique(variation_matrix['condition']), well_indexes))
-
-    for condition_well_combination in condition_wells_combinations:
+def __retrive_raw_data_and_summary_data_from_variation_matrix(variation_matrix, all_raw_data, all_summary_data):
+    # Initialize an empty list to store index tuples
+    index_list = []
+    
+    # Loop over the rows of variation_matrix and extract relevant values
+    for idx in variation_matrix.index:
+        file_name_A, file_name_B, plate_name_A, plate_name_B, well_row_index, well_column_index = idx
         
-        curr_condition = condition_well_combination[0]
-        well_row_index = condition_well_combination[1][0]
-        well_column_index = condition_well_combination[1][1]
+        # Append both A and B combinations to the index list
+        index_list.append((file_name_A, plate_name_A, well_row_index, well_column_index))
+        index_list.append((file_name_B, plate_name_B, well_row_index, well_column_index))
 
-        variation_matrix_current_well = variation_matrix.xs((well_row_index, well_column_index), level=['well_row_index', 'well_column_index'])
-           
+    # Convert the list into a pandas MultiIndex to make the filtering process easier
+    index_multi = pd.MultiIndex.from_tuples(index_list, names=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])
+    
+    # Filter the all_raw_data DataFrame based on the MultiIndex
+    raw_data_filtered = all_raw_data.loc[index_multi]
+    
+    # Filter the all_summary_data DataFrame based on the MultiIndex
+    summary_data_filtered = all_summary_data.loc[index_multi]
+    
+    return raw_data_filtered, summary_data_filtered
 
-        variation_matrix_current_well_condition_valid_wells = variation_matrix_current_well.loc[
-            (variation_matrix_current_well['condition'] == curr_condition) &
-            ((variation_matrix_current_well['is_well_A_valid'] == True) & (variation_matrix_current_well['is_well_B_valid'] == True)) &
-            (variation_matrix_current_well['relative_CC_score'] >= 0.8)
-        ]
 
-        # TODO: Use this to get the invalid replicas from all_summary_data
-        variation_matrix_current_well_condition_invalid_wells = variation_matrix_current_well.loc[
-            (variation_matrix_current_well['condition'] == curr_condition) &
-            ((variation_matrix_current_well['is_well_A_valid'] == False) | (variation_matrix_current_well['is_well_B_valid'] == False)) &
-            (variation_matrix_current_well['relative_CC_score'] < 0.8)
-        ]
+# raw_data_dfs_paased_qc = []
+# raw_data_dfs_failed_qc = []
 
-        for curr_plate_repeats in plate_repeats:
-            
-            # Remove at the end of development of this part
-            gc_utils.clear_console()
+# summary_dfs_passed_qc = []
+# summary_dfs_failed_qc = []
 
-            variation_matrix_current_well_condition_plates = variation_matrix_current_well_condition_valid_wells.loc[
-                variation_matrix_current_well_condition_valid_wells.index.get_level_values('plate_name_A').isin(curr_plate_repeats) |
-                variation_matrix_current_well_condition_valid_wells.index.get_level_values('plate_name_B').isin(curr_plate_repeats)
-            ]
 
-            # Bring the raw data rows from file A and file B and add them to a new dataframe
-            # For that first grab the values that will be used to filter
-            curr_file_name_A = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('file_name_A').values)
-            curr_file_name_B = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('file_name_B').values)
-            
-            
-            # Same thing for plate names
-            curr_plate_name_A = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('plate_name_A').values)
-            curr_plate_name_B = pd.unique(variation_matrix_current_well_condition_plates.index.get_level_values('plate_name_B').values)
-        
+# well_column_indexes = pd.unique(variation_matrix.index.get_level_values('well_column_index'))
+# well_row_indexes = pd.unique(variation_matrix.index.get_level_values('well_row_index'))
 
-            # There are no valid entries for the replicate
-            if len(curr_file_name_A) == 0 or len(curr_file_name_B) == 0:
-                continue
 
-            
-            # Grab all the raw data with the combinations of file names and plate names
-            # There is a seperation between A and B replicas since it's possible that plateX from rep A was valid but not in rep B
-            replica_A_valid_combinations = list(itertools.product(curr_file_name_A, curr_plate_name_A))
-            replica_B_valid_combinations = list(itertools.product(curr_file_name_B, curr_plate_name_B))
+# variation_matrix['condition'] = variation_matrix.index.get_level_values('file_name_A').map(file_condition_map)
 
-            current_valid_combinations = replica_A_valid_combinations + replica_B_valid_combinations
 
-            for valid_combination in current_valid_combinations:
-                raw_data_dfs_paased_qc.append(all_raw_data.xs((valid_combination[0], valid_combination[1], well_row_index, well_column_index),
-                                                              level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
-                
-                print(all_summary_data)
+# well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
+# condition_wells_combinations = list(itertools.product(condition_file_map.keys() , well_indexes))
 
-                summary_dfs_passed_qc.append(all_summary_data.xs((valid_combination[0], valid_combination[1], well_row_index, well_column_index),
-                                                              level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
+# # Iterate the replicates to save the data for later use
+# for condition_well_combination in condition_wells_combinations:
+#     curr_condition = condition_well_combination[0]
+#     well_row_index = condition_well_combination[1][0]
+#     well_column_index = condition_well_combination[1][1]
+
+#     variation_matrix_current_well = variation_matrix.xs((well_row_index, well_column_index), level=['well_row_index', 'well_column_index'])
+
+
+#     variation_matrix_current_well_condition_valid_wells = variation_matrix_current_well.loc[
+#         (variation_matrix_current_well['condition'] == curr_condition) &
+#         ((variation_matrix_current_well['is_well_A_valid'] == True) & (variation_matrix_current_well['is_well_B_valid'] == True)) &
+#         (variation_matrix_current_well['relative_CC_score'] >= 0.8)
+#     ]
+
+#     # get the invalid replicas from all_summary_data
+#     variation_matrix_current_well_condition_invalid_wells = variation_matrix_current_well.loc[
+#         (variation_matrix_current_well['condition'] == curr_condition) &
+#         ((variation_matrix_current_well['is_well_A_valid'] == False) | (variation_matrix_current_well['is_well_B_valid'] == False)) &
+#         (variation_matrix_current_well['relative_CC_score'] < 0.8)
+#     ]
+
+#     # Foreach plate in all replicates add the valid and invalid curves of it to the lists above
+#     for curr_plate_repeats in plate_repeats:
+
+#         variation_matrix_current_well_condition_plates_valid = variation_matrix_current_well_condition_valid_wells.loc[
+#             variation_matrix_current_well_condition_valid_wells.index.get_level_values('plate_name_A').isin(curr_plate_repeats) |
+#             variation_matrix_current_well_condition_valid_wells.index.get_level_values('plate_name_B').isin(curr_plate_repeats)
+#         ]
+
+#         # Bring the raw data rows from file A and file B and add them to a new dataframe
+#         # For that first grab the values that will be used to filter
+#         curr_file_names_A = pd.unique(variation_matrix_current_well_condition_plates_valid.index.get_level_values('file_name_A').values)
+#         curr_file_names_B = pd.unique(variation_matrix_current_well_condition_plates_valid.index.get_level_values('file_name_B').values)
+
+
+#         # Same thing for plate names
+#         curr_plate_names_A = pd.unique(variation_matrix_current_well_condition_plates_valid.index.get_level_values('plate_name_A').values)
+#         curr_plate_names_B = pd.unique(variation_matrix_current_well_condition_plates_valid.index.get_level_values('plate_name_B').values)
+
+
+
+#         # Grab all the raw data with the combinations of file names and plate names
+#         # There is a seperation between A and B replicas since it's possible that plateX from rep A was valid but not in rep B
+#         replica_A_valid_combinations = list(itertools.product(curr_file_names_A, curr_plate_names_A))
+#         replica_B_valid_combinations = list(itertools.product(curr_file_names_B, curr_plate_names_B))
+
+#         current_valid_combinations = replica_A_valid_combinations + replica_B_valid_combinations
+
+#         for valid_combination in current_valid_combinations:
+#             raw_data_dfs_paased_qc.append(all_raw_data.xs((valid_combination[0], valid_combination[1], well_row_index, well_column_index),
+#                                                         level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
+
+#             summary_dfs_passed_qc.append(all_summary_data.xs((valid_combination[0], valid_combination[1], well_row_index, well_column_index),
+#                                                         level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
+
+
+
+
+
+#         # Store invalid rows from the summary data df and the raw data as well
+#         variation_matrix_current_well_condition_plates_invalid = variation_matrix_current_well_condition_invalid_wells.loc[
+#             variation_matrix_current_well_condition_invalid_wells.index.get_level_values('plate_name_A').isin(curr_plate_repeats) |
+#             variation_matrix_current_well_condition_invalid_wells.index.get_level_values('plate_name_B').isin(curr_plate_repeats)
+#         ]
+
+#         # Bring the raw data rows from file A and file B and add them to a new dataframe
+#         # For that first grab the values that will be used to filter
+#         curr_file_names_A_invalid = pd.unique(variation_matrix_current_well_condition_plates_invalid.index.get_level_values('file_name_A').values)
+#         curr_file_names_B_invalid = pd.unique(variation_matrix_current_well_condition_plates_invalid.index.get_level_values('file_name_B').values)
+
+
+#         # Same thing for plate names
+#         curr_plate_names_A_invalid = pd.unique(variation_matrix_current_well_condition_plates_invalid.index.get_level_values('plate_name_A').values)
+#         curr_plate_names_B_invalid = pd.unique(variation_matrix_current_well_condition_plates_invalid.index.get_level_values('plate_name_B').values)
+
+
+
+#         # Grab all the raw data with the combinations of file names and plate names
+#         # There is a seperation between A and B replicas since it's possible that plateX from rep A was valid but not in rep B
+#         replica_A_invalid_combinations = list(itertools.product(curr_file_names_A_invalid, curr_plate_names_A_invalid))
+#         replica_B_invalid_combinations = list(itertools.product(curr_file_names_B_invalid, curr_plate_names_B_invalid))
+
+#         current_invalid_combinations = replica_A_invalid_combinations + replica_B_invalid_combinations
+
+#         for invalid_combination in current_invalid_combinations:
+#             raw_data_dfs_failed_qc.append(all_raw_data.xs((invalid_combination[0], invalid_combination[1], well_row_index, well_column_index),
+#                                                         level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
+
+#             summary_dfs_failed_qc.append(all_summary_data.xs((invalid_combination[0], invalid_combination[1], well_row_index, well_column_index),
+#                                                         level=['file_name', 'plate_name', 'well_row_index', 'well_column_index']))
+
+
+# # The valid raw data and summary data have been parsed
+# # From the summary data the growth parameters for each replicate take the average (or median or some other measure, tbd) to get the final parameter estimation
+# # Also, make an average raw data graph for visulizations
+# print(raw_data_dfs_paased_qc)
+# print(summary_dfs_passed_qc)
+# print()
