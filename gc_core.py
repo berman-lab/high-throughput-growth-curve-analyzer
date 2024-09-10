@@ -484,6 +484,14 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
     all_raw_data = __flatten_df_dictionary(file_raw_data_df_mapping)
     all_summary_data = __flatten_df_dictionary(file_summary_df_mapping)
 
+    # Add condition column to all the dfs to ease later groupby steps
+    variation_matrix['condition'] = variation_matrix.index.get_level_values('file_name_A').map(file_condition_map)
+    all_raw_data['condition'] = all_raw_data.index.get_level_values('file_name').map(file_condition_map)
+    all_summary_data['condition'] = all_summary_data.index.get_level_values('file_name').map(file_condition_map)
+    
+    # Split plate names to ease group by too
+    all_raw_data['plate_replica_identifier'] = all_raw_data.index.get_level_values('plate_name').astype(str).str.split('.').str[0]
+    all_summary_data['plate_replica_identifier'] = all_summary_data.index.get_level_values('plate_name').astype(str).str.split('.').str[0]
 
     # Create a Boolean mask for the invalid rows
     invalid_mask =  (variation_matrix['relative_CC_score'] < 0.8) | \
@@ -496,11 +504,14 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
     # Get the valid rows using the complement of the invalid mask
     valid_replicates_variation_matrix_rows = variation_matrix.loc[~invalid_mask]
 
-    all_valid_wells_raw_data, all_valid_wells_summary_data = __retrive_raw_data_and_summary_data_from_variation_matrix(valid_replicates_variation_matrix_rows, all_raw_data, all_summary_data)
+    all_valid_wells_raw_data, all_valid_wells_summary_data  = __retrive_raw_data_and_summary_data_from_variation_matrix(valid_replicates_variation_matrix_rows, all_raw_data, all_summary_data)
 
     all_invalid_wells_raw_data, all_invalid_wells_summary_data = __retrive_raw_data_and_summary_data_from_variation_matrix(invalid_replicates_variation_matrix_rows, all_raw_data, all_summary_data)
 
+    
+    # TODO: continue with groupby for the returned data frames. Include std for averages
 
+    
     return 1
 
 
