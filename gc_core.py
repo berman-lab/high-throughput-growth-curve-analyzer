@@ -10,6 +10,7 @@ import concurrent.futures
 
 import gc_utils
 
+
 def get_experiment_growth_parameters(raw_data_df, log):
     '''
     Desrciption
@@ -468,7 +469,7 @@ def __flatten_df_dictionary(dict_df):
     return pd.concat(dict_df.values(), axis=0)
 
 
-def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix):
+def multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix):
     '''
     Desrciption
     -----------
@@ -509,10 +510,21 @@ def multiple_reps_and_files_summary(condition_file_map, file_condition_map, plat
     all_invalid_wells_raw_data, all_invalid_wells_summary_data = __retrive_raw_data_and_summary_data_from_variation_matrix(invalid_replicates_variation_matrix_rows, all_raw_data, all_summary_data)
 
     
-    # TODO: continue with groupby for the returned data frames. Include std for averages
+    all_valid_wells_raw_data['time_index'] = all_valid_wells_raw_data.groupby(level=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])['time'].rank(method='first').astype(int) - 1
 
-    
-    return 1
+    summary_agg = ['median', 'std']
+    unified_summary_data = all_valid_wells_summary_data.groupby(['condition', 'plate_replica_identifier', 'well_key']).agg(
+                            {
+                            'lag_end_time': summary_agg, 'lag_end_OD': summary_agg,
+                            'max_population_gr_time': summary_agg, 'max_population_gr_OD' : summary_agg, 'max_population_gr_slope': summary_agg, 'min_doubling_time': summary_agg,
+                            'exponet_end_time': summary_agg, 'exponet_end_OD': summary_agg,
+                            'carrying_capacity': summary_agg
+                        }
+                    , axis=0)
+    unified_raw_data = all_valid_wells_raw_data.groupby(['condition', 'plate_replica_identifier', 'well_key', 'time_index']).agg({'time': ['mean'],'OD': ['mean', 'median', 'min', 'max', 'std']}, axis=0)
+
+   
+    return unified_raw_data, unified_summary_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data
 
 
 
@@ -537,4 +549,6 @@ def __retrive_raw_data_and_summary_data_from_variation_matrix(variation_matrix, 
     # Filter the all_summary_data DataFrame based on the MultiIndex
     summary_data_filtered = all_summary_data.loc[index_multi]
     
-    return raw_data_filtered, summary_data_filtered
+    # The variation index has multiple repeats for each replicate due to the pair wise way it's built.
+    # Calling drop duplicates is long as far as run time is concenred but it would take a complete logic change to resolve this another way
+    return raw_data_filtered.drop_duplicates(), summary_data_filtered.drop_duplicates()
