@@ -130,18 +130,19 @@ def main():
 
     # Create a dir for the files from the last step
     all_replicates_unified_data_path = gc_io.create_directory(output_path, 'all_replicates_unified_data')
+    all_replicates_unified_data_graphs_path = gc_io.create_directory(all_replicates_unified_data_path, 'averaged_graphs')
 
     # For meeting with Judy and also bring some examples
     # gc_io.plot_dist(variation_matrix['relative_CC_score'])
     # gc_io.plot_dist(variation_matrix['max_CC_score_shift_in_hours'])
 
     # The data is in the needed objects, we can use it for the 
-    unified_raw_data, unified_summary_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data = gc_core.multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
+    unified_raw_data, unified_summary_data, all_valid_raw_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data = gc_core.multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
 
     gc_io.save_dataframe_to_csv(unified_raw_data, all_replicates_unified_data_path, 'raw_data_unified')
     gc_io.save_dataframe_to_csv(unified_summary_data, all_replicates_unified_data_path, 'summary_data_unified')
 
-    # create_reps_avarage_graphs(raw_data, averaged_rep, output_directory)
+    gc_io.create_averaged_replicates_graphs(all_valid_raw_data, unified_raw_data, unified_summary_data, all_replicates_unified_data_graphs_path, DECIMAL_PERCISION_IN_PLOTS, condition_file_map, plate_repeats)
 
 
 
