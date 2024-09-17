@@ -12,8 +12,6 @@ import gc_utils
 # gc prefix added to avoid name conflict with other modules
 # This file contains all IO related functions
 
-
-
 def read_tecan_stacker_xlsx(file_path, plate_rows, plate_columns, log):
     '''
     Desrciption
@@ -241,6 +239,179 @@ def create_single_well_graphs(file_name ,raw_data, summary_data, output_path, ti
         # Save the figure
         fig.savefig(os.path.join(output_path, f"well {well_summary_data['well_key']} from {plate_name} in {file_name}.png"))
         plt.close("all")
+
+
+def create_averaged_replicates_graphs(raw_data_all_replicates, averaged_raw_data, averaged_growth_parameters, output_path, decimal_percision, condition_file_map ,plate_repeats):
+    # Use to keep track of if 
+    generated_graphes = {}
+    
+    # Matplotlib backend mode - a non-interactive backend that can only write to files
+    # Before changing to this mode the program would crash after the creation of about 250 graphs
+    matplotlib.use("Agg")
+
+    plt.style.use('ggplot')
+    
+    # Grab unique values of each field to iterate over
+    well_row_indexes = pd.unique(raw_data_all_replicates.index.get_level_values('well_row_index'))
+    well_column_indexes = pd.unique(raw_data_all_replicates.index.get_level_values('well_column_index'))
+    file_names = pd.unique(raw_data_all_replicates.index.get_level_values('file_name'))
+    plate_names = pd.unique(raw_data_all_replicates.index.get_level_values('plate_name'))
+
+    file_names_plate_names_indexes = list(itertools.product(file_names, plate_names))
+    well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
+
+    all_replicates_combinations = list(itertools.product(file_names_plate_names_indexes, well_indexes))
+
+    for replicate_identifier in all_replicates_combinations:
+        curr_file_name = replicate_identifier[0][0]
+        curr_plate_name = replicate_identifier[0][1]
+        curr_row_index = replicate_identifier[1][0]
+        curr_column_index = replicate_identifier[1][1]
+
+        # If the graph for this condition has already been created than continue
+        if (curr_file_name, curr_plate_name, curr_row_index, curr_column_index) in generated_graphes:
+            continue
+
+
+        all_files = __find_list_by_value_incondition_file_map(condition_file_map, curr_file_name)
+        all_plates = next(sublist for sublist in plate_repeats if curr_plate_name in sublist)
+
+        all_file_and_plates_for_replicate = list(itertools.product(all_files, all_plates))
+        # Add the current well index to the the plate file conbinations
+        curr_replicate_all_wells = [file_plate_combination + (curr_row_index, curr_column_index) for file_plate_combination
+         in all_file_and_plates_for_replicate]
+
+        curr_raw_data = []
+        # Get the other replicates from both plate names and file names
+        for replicate in curr_replicate_all_wells:
+            curr_raw_data.append(raw_data_all_replicates.xs((replicate[0], replicate[1], replicate[2], replicate[3]), level=["file_name", "plate_name", "well_row_index", "well_column_index"]))
+
+        # Grab the unified raw data and the unified summary data using the condition and the plate replica identifier fields
+        condition, plate_identifier = curr_raw_data[0].iloc[0].values[4:6]
+        curr_well_key = curr_raw_data[0].iloc[0].values[0]
+
+        curr_averaged_raw_data = averaged_raw_data.xs((condition, plate_identifier, curr_well_key), level=["condition", "plate_replica_identifier", "well_key"])
+        curr_averaged_summary_data = averaged_growth_parameters.xs((condition, plate_identifier, curr_well_key), level=["condition", "plate_replica_identifier", "well_key"])
+
+        curr_averaged_raw_data = None if isinstance(curr_averaged_raw_data, pd.DataFrame) and curr_averaged_raw_data.empty else curr_averaged_raw_data
+        curr_averaged_summary_data = None if isinstance(curr_averaged_summary_data, pd.DataFrame) and curr_averaged_summary_data.empty else curr_averaged_summary_data
+
+
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax = __plot_growth_curve_on_ax(ax, decimal_percision, curr_raw_data, curr_averaged_raw_data, curr_averaged_summary_data)
+
+        # Save the figure
+        fig.savefig(os.path.join(output_path, f"{condition}_{plate_identifier}_{curr_well_key}.png"))
+        plt.close("all")
+
+        # Figure created successfully, save all the keys to a dictionary to avoid creating graphs multiple times
+        generated_graphes.update({tup: 1 for tup in curr_replicate_all_wells})    
+
+
+def __find_list_by_value_incondition_file_map(condition_file_map, file_name):
+    for key, value_list in condition_file_map.items():
+        if file_name in value_list:
+            return value_list
+    return None
+
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, averaged_raw_data=None, averaged_growth_parameters=None):
+    # Make sure that both averaged_growth_parameters and averaged_raw_data are either None or non-None
+    is_plot_averaged_data = (averaged_growth_parameters is None and averaged_raw_data is None) or (averaged_growth_parameters is not None and averaged_raw_data is not None)
+    assert is_plot_averaged_data, "Both 'averaged_growth_parameters' and 'averaged_raw_data' must either be None or non-None. Either there are no valid replicates for the condition or there are and the two dfs should match"
+
+
+    size=10
+    alpha=0.3
+    # Define different markers and colors
+    markers = ['o', 's', 'D', 'v', '^', 'p', '*', 'h', 'x', '+']
+    
+    
+    # Iterate over each curve (DataFrame) and plot with different marker and color
+    for i, curve in enumerate(raw_data_all_replicates):
+        marker = markers[i % len(markers)]
+        color = plt.cm.viridis(i / len(raw_data_all_replicates))
+        
+        plate_name = pd.unique(curve.index.get_level_values('plate_name'))[0]
+
+        ax.scatter(curve['time'], curve['OD'], label=f'{plate_name}', color=color, marker=marker, s=size, alpha=alpha)
+    
+    if averaged_raw_data is not None:
+        ax.plot(averaged_raw_data[('time', 'mean')], averaged_raw_data[('OD', 'median')], label='Median OD line')
+
+    if averaged_growth_parameters is not None:
+        # Lag
+        lag_end_time = averaged_growth_parameters[('lag_end_time', 'median')].iloc[0]
+        lag_end_OD = averaged_growth_parameters[('lag_end_OD', 'median')].iloc[0]
+
+        ax.scatter(lag_end_time, lag_end_OD, s=size + 45, color='dimgray', marker='*',
+                   label=f'Lag end time {lag_end_time:.{decimal_percision}f} hr', zorder=10)
+        
+        # This should be around (lag_end_time, lag_end_OD) and show the std on the time axis (X)
+        lag_end_time_std = averaged_growth_parameters[('lag_end_time', 'std')].iloc[0]
+        # This should be around (lag_end_time, lag_end_OD) and show the std on the OD axis (y)
+        lag_end_OD_std = averaged_growth_parameters[('lag_end_OD', 'std')]
+        
+        ax.errorbar(lag_end_time, lag_end_OD, xerr=lag_end_time_std, yerr=lag_end_OD_std, alpha=0.7,
+            fmt='none', color='lightgray', ecolor='gray', elinewidth=2, capsize=3)
+        
+        # Min doubling time
+        max_population_gr_time = averaged_growth_parameters[('max_population_gr_time', 'median')].iloc[0]
+        max_population_gr_time_std = averaged_growth_parameters[('max_population_gr_time', 'std')].iloc[0]
+
+        max_population_gr_OD = averaged_growth_parameters[('max_population_gr_OD', 'median')].iloc[0]
+        max_population_gr_OD_std = averaged_growth_parameters[('max_population_gr_OD', 'std')].iloc[0]
+
+        max_population_gr_slope = averaged_growth_parameters[('max_population_gr_slope', 'median')].iloc[0]
+
+        min_doubling_time = averaged_growth_parameters[('min_doubling_time', 'median')].iloc[0]
+        min_doubling_time_std = averaged_growth_parameters[('min_doubling_time', 'std')].iloc[0]
+
+        ax.scatter(max_population_gr_time, max_population_gr_OD, s=size + 20, color='dimgray', marker='h', 
+                label=f'Min doubling time {min_doubling_time:.{decimal_percision}f} div/hr', zorder=10)
+
+        # Plot error bars for max population growth point
+        ax.errorbar(max_population_gr_time, max_population_gr_OD, 
+                    xerr=max_population_gr_time_std, yerr=max_population_gr_OD_std, 
+                    alpha=0.7, fmt='none', color='lightgray', ecolor='gray', elinewidth=2, capsize=3)
+
+        ax.axline((max_population_gr_time, max_population_gr_OD), slope=max_population_gr_slope, color='red', alpha=alpha, linestyle=':', label='Exrapolated continuation of exp growth')
+
+        # End of exponential phase
+        exponet_end_time = averaged_growth_parameters[('exponet_end_time', 'median')].iloc[0]
+        exponet_end_time_std = averaged_growth_parameters[('exponet_end_time', 'std')].iloc[0]
+        
+        exponet_end_OD = averaged_growth_parameters[('exponet_end_OD', 'median')].iloc[0]
+        exponet_end_OD_std = averaged_growth_parameters[('exponet_end_OD', 'std')].iloc[0]
+
+        ax.scatter(exponet_end_time, exponet_end_OD, s=size + 20, color='dimgray', marker='^',
+                label=f'exponet end time {exponet_end_time:.{decimal_percision}f} hr, OD {exponet_end_OD:.{decimal_percision}f}', zorder=10)
+
+        ax.errorbar(exponet_end_time, exponet_end_OD, xerr=exponet_end_time_std, yerr=exponet_end_OD_std, alpha=0.7,
+            fmt='none', color='lightgray', ecolor='gray', elinewidth=2, capsize=3)
+
+
+        # Carrying_capacity
+        carrying_capacity = averaged_growth_parameters[('carrying_capacity', 'median')].iloc[0]
+        carrying_capacity_std = averaged_growth_parameters[('carrying_capacity', 'std')].iloc[0]
+        ax.axhline(y=carrying_capacity, color='black', linestyle='dashdot', alpha=alpha,
+                   label=f'Carrying capacity {carrying_capacity:.{decimal_percision}f}')
+
+
+    # Add legend and labels to the plot for better visualization
+    ax.set_xlabel('Time (hours)')
+    ax.set_ylabel('OD')
+    plt.subplots_adjust(right=0.72)
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    save_name_and_title = f'{pd.unique(curve.index.get_level_values("file_name"))[0]} {plate_name.split(".")[0]} {curve.loc[:,"well_key"].iloc[0]}'
+    ax.set_title(save_name_and_title)
+
+    return save_name_and_title
+
+    
 
 
 def plot_dist(relative_CC_scores):
