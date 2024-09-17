@@ -292,7 +292,7 @@ def __generate_all_combanations_for_well_pairs(repeats, condition_file_map, plat
 
     file_names_repeats_pairs_combinations = list(itertools.chain.from_iterable(file_names_repeats_pairs_combinations))
 
-
+    
     # Prepare the well indexes of the well rows and columns
     well_indexes = list(itertools.product(well_row_indexes, well_column_indexes))
 
@@ -524,7 +524,7 @@ def multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_
     unified_raw_data = all_valid_wells_raw_data.groupby(['condition', 'plate_replica_identifier', 'well_key', 'time_index']).agg({'time': ['mean'],'OD': ['mean', 'median', 'min', 'max', 'std']}, axis=0)
 
    
-    return unified_raw_data, unified_summary_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data
+    return unified_raw_data, unified_summary_data, all_raw_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data
 
 
 
