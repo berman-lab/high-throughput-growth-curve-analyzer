@@ -298,10 +298,10 @@ def create_averaged_replicates_graphs(raw_data_all_replicates, averaged_raw_data
 
 
         fig, ax = plt.subplots(figsize=(12, 5))
-        ax = __plot_growth_curve_on_ax(ax, decimal_percision, curr_raw_data, curr_averaged_raw_data, curr_averaged_summary_data)
+        save_name = __plot_growth_curve_on_ax(ax, decimal_percision, curr_raw_data, curr_averaged_raw_data, curr_averaged_summary_data)
 
         # Save the figure
-        fig.savefig(os.path.join(output_path, f"{condition}_{plate_identifier}_{curr_well_key}.png"))
+        fig.savefig(os.path.join(output_path, f"{save_name}.png"))
         plt.close("all")
 
         # Figure created successfully, save all the keys to a dictionary to avoid creating graphs multiple times
@@ -342,6 +342,8 @@ def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, av
     if averaged_raw_data is not None:
         ax.plot(averaged_raw_data[('time', 'mean')], averaged_raw_data[('OD', 'median')], label='Median OD line')
 
+    # Use this variable to mark the files of invalid grphas with an 'invalid' prefix
+    is_valid_replicate = True
     if averaged_growth_parameters is not None:
         # Lag
         lag_end_time = averaged_growth_parameters[('lag_end_time', 'median')].iloc[0]
@@ -369,9 +371,9 @@ def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, av
 
         min_doubling_time = averaged_growth_parameters[('min_doubling_time', 'median')].iloc[0]
         min_doubling_time_std = averaged_growth_parameters[('min_doubling_time', 'std')].iloc[0]
-
+        
         ax.scatter(max_population_gr_time, max_population_gr_OD, s=size + 20, color='dimgray', marker='h', 
-                label=f'Min doubling time {min_doubling_time:.{decimal_percision}f} div/hr', zorder=10)
+                label=f'Min doubling time {min_doubling_time:.{decimal_percision}f} hr/div', zorder=10)
 
         # Plot error bars for max population growth point
         ax.errorbar(max_population_gr_time, max_population_gr_OD, 
@@ -400,13 +402,17 @@ def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, av
         ax.axhline(y=carrying_capacity, color='black', linestyle='dashdot', alpha=alpha,
                    label=f'Carrying capacity {carrying_capacity:.{decimal_percision}f}')
 
+    else:
+        is_valid_replicate = False
 
     # Add legend and labels to the plot for better visualization
     ax.set_xlabel('Time (hours)')
     ax.set_ylabel('OD')
     plt.subplots_adjust(right=0.72)
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-    save_name_and_title = f'{pd.unique(curve.index.get_level_values("file_name"))[0]} {plate_name.split(".")[0]} {curve.loc[:,"well_key"].iloc[0]}'
+
+    status_string = '' if is_valid_replicate else 'invalid_'
+    save_name_and_title = f'{status_string}{pd.unique(curve.index.get_level_values("file_name"))[0]} {plate_name.split(".")[0]} {curve.loc[:,"well_key"].iloc[0]}'
     ax.set_title(save_name_and_title)
 
     return save_name_and_title
