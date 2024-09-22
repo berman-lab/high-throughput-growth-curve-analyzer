@@ -380,7 +380,7 @@ def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, av
                     xerr=max_population_gr_time_std, yerr=max_population_gr_OD_std, 
                     alpha=0.7, fmt='none', color='lightgray', ecolor='gray', elinewidth=2, capsize=3)
 
-        ax.axline((max_population_gr_time, max_population_gr_OD), slope=max_population_gr_slope, color='red', alpha=alpha, linestyle=':', label='Exrapolated continuation of exp growth')
+        ax.axline((max_population_gr_time, max_population_gr_OD), slope=max_population_gr_slope, color='red', alpha=alpha, linestyle=':', label='Extrapolated continuation of exp growth')
 
         # End of exponential phase
         exponet_end_time = averaged_growth_parameters[('exponet_end_time', 'median')].iloc[0]
