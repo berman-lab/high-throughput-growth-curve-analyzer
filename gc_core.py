@@ -237,7 +237,9 @@ def _get_well_growth_parameters(item):
         well_valid = False
 
     min_doubling_time = curveball.models.find_min_doubling_time(best_model)
-    if np.isnan(min_doubling_time) or min_doubling_time > 5 or min_doubling_time < 0.5:
+    # adding the part of the condition: 'or min_doubling_time > 5 or min_doubling_time < 0.5' seems to be a mistake.
+    # It leads to many good looking curves being considered invalid
+    if np.isnan(min_doubling_time):
         tmp_err = f'Min doubling time had an extreme value of: {min_doubling_time} in {well_name} on plate: {plate_name} in file: {file_name}, this probably means that the cells in the well did not grow'
         if log == '':
             log = tmp_err
