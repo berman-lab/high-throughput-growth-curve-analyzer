@@ -3,10 +3,6 @@ import time
 import json
 import pathlib
 import argparse
-import itertools
-import numpy as np
-import pandas as pd
-from scipy import signal
 
 import gc_io
 import gc_core
