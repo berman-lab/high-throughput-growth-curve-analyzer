@@ -489,7 +489,7 @@ def import_previous_run_data(output_path):
     # Filter files based on the required suffix
     raw_data_files = [f for f in all_files if f.endswith('_raw_data.csv')]
     summary_data_files = [f for f in all_files if f.endswith('_summary_data.csv')]
-    variation_data_files = [f for f in all_files if f.endswith('_coupled_reps_data.csv')]
+    variation_data_files = [f for f in all_files if f.endswith('variation_matrix.csv')]
     
     # Check that the number of raw data files matches the number of summary data files
     if len(raw_data_files) != len(summary_data_files):
@@ -497,7 +497,7 @@ def import_previous_run_data(output_path):
     
     # Check that there is exactly one variation matrix file
     if len(variation_data_files) != 1:
-        raise ValueError("There must be exactly one '_coupled_reps_data.csv' file.")
+        raise ValueError("There must be exactly one variation_matrix file.")
     
     # Process raw data files
     for raw_file in raw_data_files:

@@ -118,7 +118,7 @@ def main():
         variation_matrix = gc_core.get_reps_variation_data(file_raw_data_df_mapping, file_summary_df_mapping, plate_repeats, condition_file_map, multiple_well_comparison_log)
 
         variation_matrix_unidexed = variation_matrix.reset_index()
-        variation_matrix_unidexed.to_csv(os.path.join(output_path, f'{list(file_raw_data_df_mapping.keys())[0]}-{list(file_raw_data_df_mapping.keys())[-1]}_coupled_reps_data.csv'), index=False, encoding='utf-8')
+        variation_matrix_unidexed.to_csv(os.path.join(output_path, 'variation_matrix.csv'), index=False, encoding='utf-8')
         
         gc_utils.save_log(multiple_well_comparison_log, multiple_well_comparison_log_save_path)
 

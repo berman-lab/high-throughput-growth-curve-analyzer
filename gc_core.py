@@ -382,7 +382,7 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition
 
     for repeat_condition in final_repeat_combinations:
         
-        file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data = __resolve_well_pair_combination_and_filter_dfs(
+        well_row_index, well_column_index, file_name_A, plate_name_A, well_A_raw_data, well_A_summary_data, file_name_B, plate_name_B, well_B_raw_data, well_B_summary_data = __resolve_well_pair_combination_and_filter_dfs(
             repeat_condition, reps_raw_data, reps_summary_data)
 
         res = __compare_replicates(well_A_raw_data['OD'].values, well_B_raw_data['OD'].values, time_gap_hours_between_measurements)
@@ -393,8 +393,8 @@ def get_reps_variation_data(reps_raw_data, reps_summary_data, repeats, condition
                 'file_name_B': file_name_B,
                 'plate_name_A': plate_name_A,
                 'plate_name_B': plate_name_B,
-                'well_row_index': well_A_raw_data.well_row_index.iloc[0],
-                'well_column_index': well_A_raw_data.well_column_index.iloc[0],
+                'well_row_index': well_row_index,
+                'well_column_index': well_column_index,
                 'well_key': well_A_raw_data.well_key.iloc[0],
                 'is_well_A_valid': well_A_summary_data.is_valid.iloc[0],
                 'is_well_B_valid': well_B_summary_data.is_valid.iloc[0],
