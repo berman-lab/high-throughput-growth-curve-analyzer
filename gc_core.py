@@ -497,7 +497,7 @@ def multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_
     all_summary_data['plate_replica_identifier'] = all_summary_data.index.get_level_values('plate_name').astype(str).str.split('.').str[0]
 
     # Create a Boolean mask for the invalid rows
-    invalid_mask =  (variation_matrix['relative_CC_score'] < 0.8) | \
+    invalid_mask =  (variation_matrix['relative_CC_score'] < 0.7) | \
                     (variation_matrix['is_well_A_valid'] == False) | \
                     (variation_matrix['is_well_B_valid'] == False)
 
