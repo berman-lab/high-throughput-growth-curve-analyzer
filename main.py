@@ -10,20 +10,23 @@ import gc_utils
 
 
 def main():
-    # Set up the argument parser
     parser = argparse.ArgumentParser()
     parser.add_argument('-in', '--input_folder', help='The path to the folder with the measurements', required=True)
     parser.add_argument('-out', '--output_folder', help='The path to the folder under which the output will be saved', required=True)
     parser.add_argument('-f', '--format', help='The layout of the plates (96, 384)', required=True)
-    parser.add_argument('-g', '--is_create_graphs', help='should single well graphs be generated or only tables and summary graphs', default=False ,action='store_true')
     parser.add_argument('-c', '--is_get_cached_results', help='should the program grab data from the output folder that was put there from previous runs', default=False ,action='store_true')
+    parser.add_argument('-swg', '--is_create_single_well_graphs', help='should single well graphs be generated', default=False ,action='store_true')
+    parser.add_argument('-sg', '--is_create_summary_graphs', help='should replicate wide graphs be generated', default=False ,action='store_true')
+    
     
     args = parser.parse_args()
     input_path = os.path.normcase(args.input_folder)
     output_path = os.path.normcase(args.output_folder)
     format = int(args.format)
-    is_create_graphs = args.is_create_graphs
     is_import_chached_results = args.is_get_cached_results
+    is_create_single_well_graphs = args.is_create_single_well_graphs
+    is_create_summary_graphs = args.is_create_summary_graphs
+
     
 
     # Read the data from the config file based on the format provided as an argument
@@ -31,6 +34,7 @@ def main():
     with open('config.json') as json_file:
         config = json.load(json_file)
     
+    # TODO: Add check that the item in the config vars are unique
     plate_rows = config[f'{format}_plate_rows']
     plate_columns = config[f'{format}_plate_columns']
     plate_repeats = config['plate_repeats']
@@ -87,20 +91,6 @@ def main():
         gc_utils.save_log(growth_parameters_log, growth_parameters_log_save_path)
 
 
-        figures_log = []
-        figures_log_save_path = os.path.join(output_path, 'figures_log.txt')
-        if is_create_graphs:
-            print("Creating figures")
-            # Graph the data and save the figures to the output_directory
-            for file_name in file_raw_data_df_mapping:
-                well_save_path = f'{file_name} single well graphs'
-                gc_io.create_directory(output_path, well_save_path)
-                graphs_output_path = os.path.join(output_path, well_save_path)
-                gc_io.create_single_well_graphs(file_name, file_raw_data_df_mapping[file_name], file_summary_df_mapping[file_name], graphs_output_path,
-                                                "OD600nm as a function of time in hours", DECIMAL_PERCISION_IN_PLOTS)
-
-        gc_utils.save_log(figures_log, figures_log_save_path)
-
         multiple_well_comparison_log = []
         multiple_well_comparison_log_save_path = os.path.join(output_path, 'multiple_well_comparison_log.txt')
         print("Comparing multiple repeats")
@@ -123,23 +113,44 @@ def main():
         file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix = gc_io.import_previous_run_data(output_path)
         print(f"Import succesful, imported {file_raw_data_df_mapping.keys()} raw data and summary data and the multiple files comprison table")
 
+    # Previous run data has either been loaded or created, continue the analysis
+    figures_log = []
+    figures_log_save_path = os.path.join(output_path, 'figures_log.txt')
+    if is_create_single_well_graphs:
+        print("Creating figures")
+        # Graph the data and save the figures to the output_directory
+        for file_name in file_raw_data_df_mapping:
+            well_save_path = f'{file_name} single well graphs'
+            gc_io.create_directory(output_path, well_save_path)
+            graphs_output_path = os.path.join(output_path, well_save_path)
+            gc_io.create_single_well_graphs(file_name, file_raw_data_df_mapping[file_name], file_summary_df_mapping[file_name], graphs_output_path,
+                                            "OD600nm as a function of time in hours", DECIMAL_PERCISION_IN_PLOTS)
+
+    gc_utils.save_log(figures_log, figures_log_save_path)
+
 
     # Create a dir for the files from the last step
     all_replicates_unified_data_path = gc_io.create_directory(output_path, 'all_replicates_unified_data')
     all_replicates_unified_data_graphs_path = gc_io.create_directory(all_replicates_unified_data_path, 'averaged_graphs')
-
-    # For meeting with Judy and also bring some examples
-    # gc_io.plot_dist(variation_matrix['relative_CC_score'])
-    # gc_io.plot_dist(variation_matrix['max_CC_score_shift_in_hours'])
+    all_replicates_unified_data_heatmaps_path = gc_io.create_directory(all_replicates_unified_data_path, 'heatmaps')
 
     # The data is in the needed objects, we can use it for the 
     unified_raw_data, unified_summary_data, all_valid_raw_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data = gc_core.multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_data_df_mapping, file_summary_df_mapping, variation_matrix)
 
     gc_io.save_dataframe_to_csv(unified_raw_data, all_replicates_unified_data_path, 'raw_data_unified')
     gc_io.save_dataframe_to_csv(unified_summary_data, all_replicates_unified_data_path, 'summary_data_unified')
+    
+    # Check the config to see if these graphs should be created
+    if is_create_summary_graphs:
+        gc_io.create_averaged_replicates_graphs(all_valid_raw_data, unified_raw_data, unified_summary_data, all_replicates_unified_data_graphs_path, DECIMAL_PERCISION_IN_PLOTS, condition_file_map, plate_repeats)
 
-    gc_io.create_averaged_replicates_graphs(all_valid_raw_data, unified_raw_data, unified_summary_data, all_replicates_unified_data_graphs_path, DECIMAL_PERCISION_IN_PLOTS, condition_file_map, plate_repeats)
 
+    gc_io.create_replicate_count_heatmap(unified_summary_data, condition_file_map, plate_columns, plate_rows, all_replicates_unified_data_heatmaps_path)
+
+
+    # For meeting with Judy and also bring some examples
+    # gc_io.plot_dist(variation_matrix['relative_CC_score'])
+    # gc_io.plot_dist(variation_matrix['max_CC_score_shift_in_hours'])
 
 
 if __name__ == "__main__":

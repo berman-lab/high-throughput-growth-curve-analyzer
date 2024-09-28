@@ -1,4 +1,3 @@
-import os
 import itertools
 import curveball
 import numpy as np
@@ -514,20 +513,21 @@ def multiple_reps_and_files_summary(file_condition_map, plate_repeats, file_raw_
     
     all_valid_wells_raw_data['time_index'] = all_valid_wells_raw_data.groupby(level=['file_name', 'plate_name', 'well_row_index', 'well_column_index'])['time'].rank(method='first').astype(int) - 1
 
-    summary_agg = ['median', 'std']
+    summary_agg_funcs = ['median', 'std', 'count']
     unified_summary_data = all_valid_wells_summary_data.groupby(['condition', 'plate_replica_identifier', 'well_key']).agg(
                             {
-                            'lag_end_time': summary_agg, 'lag_end_OD': summary_agg,
-                            'max_population_gr_time': summary_agg, 'max_population_gr_OD' : summary_agg, 'max_population_gr_slope': summary_agg, 'min_doubling_time': summary_agg,
-                            'exponet_end_time': summary_agg, 'exponet_end_OD': summary_agg,
-                            'carrying_capacity': summary_agg
+                            'lag_end_time': summary_agg_funcs, 'lag_end_OD': summary_agg_funcs,
+                            'max_population_gr_time': summary_agg_funcs, 'max_population_gr_OD' : summary_agg_funcs, 'max_population_gr_slope': summary_agg_funcs,
+                            'min_doubling_time': summary_agg_funcs, 'exponet_end_time': summary_agg_funcs, 'exponet_end_OD': summary_agg_funcs,
+                            'carrying_capacity': summary_agg_funcs
                         }
                     , axis=0)
+    
+
     unified_raw_data = all_valid_wells_raw_data.groupby(['condition', 'plate_replica_identifier', 'well_key', 'time_index']).agg({'time': ['mean'],'OD': ['mean', 'median', 'min', 'max', 'std']}, axis=0)
 
    
     return unified_raw_data, unified_summary_data, all_raw_data, all_invalid_wells_raw_data, all_invalid_wells_summary_data
-
 
 
 def __retrive_raw_data_and_summary_data_from_variation_matrix(variation_matrix, all_raw_data, all_summary_data):

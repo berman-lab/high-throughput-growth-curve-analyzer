@@ -315,9 +315,6 @@ def __find_list_by_value_incondition_file_map(condition_file_map, file_name):
     return None
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-
 def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, averaged_raw_data=None, averaged_growth_parameters=None):
     # Make sure that both averaged_growth_parameters and averaged_raw_data are either None or non-None
     is_plot_averaged_data = (averaged_growth_parameters is None and averaged_raw_data is None) or (averaged_growth_parameters is not None and averaged_raw_data is not None)
@@ -417,7 +414,55 @@ def __plot_growth_curve_on_ax(ax, decimal_percision ,raw_data_all_replicates, av
 
     return save_name_and_title
 
-    
+
+def create_replicate_count_heatmap(unified_summary_data, condition_file_map, plate_columns, plate_rows, output_path):
+
+    matplotlib.use("Agg")
+    plt.style.use('ggplot')
+
+    condtions = list(condition_file_map.keys())
+    plates = pd.unique(unified_summary_data.index.get_level_values('plate_replica_identifier'))
+
+    condition_plate_combinations = list(itertools.product(condtions, plates))
+
+    heatmap_columns = sorted(plate_columns)
+    heatmap_rows = sorted(plate_rows)
+
+    heatmap_rows_index = {char: idx for idx, char in enumerate(heatmap_rows)}
+    # The rows don't require anything so fancy since it's 1 based counting for the final index in the matrix
+
+    for condition_plate_combination in condition_plate_combinations:
+
+        # This way for wells that were completly invalid in all repeats there would still be a 0 as the count
+        plate_counts_matrix = np.zeros((len(heatmap_rows), len(heatmap_columns)))
+
+        curr_rep_data_df = unified_summary_data.xs((condition_plate_combination[0], condition_plate_combination[1]),
+                                                   level=['condition', 'plate_replica_identifier'])
+        
+        for well_data in curr_rep_data_df.iterrows():
+            well_key = well_data[0]
+            well_row = heatmap_rows_index[well_key[0]]
+            well_col = int(well_key[1:]) - 1
+            # All the fields have the count
+            well_rep_count = well_data[1]['lag_end_time']['count']
+
+            plate_counts_matrix[well_row, well_col] = well_rep_count
+
+        
+        plt.figure(figsize=(10, 6))
+        sns.heatmap(plate_counts_matrix, annot=True, cmap='coolwarm', cbar=False,
+                    xticklabels=heatmap_columns, yticklabels=heatmap_rows)
+        
+        # Set the position of column labels to the top
+        plt.gca().xaxis.set_ticks_position('top')
+        plt.gca().xaxis.set_label_position('top')
+        plt.yticks(rotation=0)
+
+        title_and_save_name = f'{condition_plate_combination[0]}, {condition_plate_combination[1]}'
+        plt.title(title_and_save_name)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_path, title_and_save_name))
+        plt.close('all')
 
 
 def plot_dist(relative_CC_scores):
