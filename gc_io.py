@@ -431,10 +431,16 @@ def create_replicate_count_heatmap(unified_summary_data, condition_file_map, pla
     heatmap_rows_index = {char: idx for idx, char in enumerate(heatmap_rows)}
     # The rows don't require anything so fancy since it's 1 based counting for the final index in the matrix
 
-    for condition_plate_combination in condition_plate_combinations:
+    # Use to generate summary heatmaps
+    count_matrices_by_condition = {}
+    count_matrices_by_plate = {}
+    
 
+
+    # Per plate per condition heatmap
+    for condition_plate_combination in condition_plate_combinations:
         # This way for wells that were completly invalid in all repeats there would still be a 0 as the count
-        plate_counts_matrix = np.zeros((len(heatmap_rows), len(heatmap_columns)))
+        curr_plate_counts_matrix = np.zeros((len(heatmap_rows), len(heatmap_columns)))
 
         curr_rep_data_df = unified_summary_data.xs((condition_plate_combination[0], condition_plate_combination[1]),
                                                    level=['condition', 'plate_replica_identifier'])
@@ -446,23 +452,43 @@ def create_replicate_count_heatmap(unified_summary_data, condition_file_map, pla
             # All the fields have the count
             well_rep_count = well_data[1]['lag_end_time']['count']
 
-            plate_counts_matrix[well_row, well_col] = well_rep_count
+            curr_plate_counts_matrix[well_row, well_col] = well_rep_count
 
+        # Save the count matrix under the condition and under the plate to later show a summary of them
+        condition = condition_plate_combination[0]
+        count_matrices_by_condition.setdefault(condition, [curr_plate_counts_matrix]).append(curr_plate_counts_matrix)
         
-        plt.figure(figsize=(10, 6))
-        sns.heatmap(plate_counts_matrix, annot=True, cmap='coolwarm', cbar=False,
-                    xticklabels=heatmap_columns, yticklabels=heatmap_rows)
-        
-        # Set the position of column labels to the top
-        plt.gca().xaxis.set_ticks_position('top')
-        plt.gca().xaxis.set_label_position('top')
-        plt.yticks(rotation=0)
+        plate = condition_plate_combination[1]
+        count_matrices_by_plate.setdefault(plate, [curr_plate_counts_matrix]).append(curr_plate_counts_matrix)
 
-        title_and_save_name = f'{condition_plate_combination[0]}, {condition_plate_combination[1]}'
-        plt.title(title_and_save_name)
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_path, title_and_save_name))
-        plt.close('all')
+        __plot_heatmap(curr_plate_counts_matrix, heatmap_rows, heatmap_columns, condition, plate, output_path)
+
+    # Per condition summary
+    for key, count_matrices in count_matrices_by_condition.items():
+        condition_count_matrix = np.minimum.reduce(count_matrices)
+        __plot_heatmap(condition_count_matrix, heatmap_rows, heatmap_columns, key, 'All plates', output_path)
+
+    # Per plate summay
+    for key, count_matrices in count_matrices_by_plate.items():
+        condition_count_matrix = np.minimum.reduce(count_matrices)
+        __plot_heatmap(condition_count_matrix, heatmap_rows, heatmap_columns, 'All condiotions', key, output_path)
+
+
+def __plot_heatmap(counts_matrix, heatmap_rows, heatmap_columns, condition, plate, output_path):
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(counts_matrix, annot=True, cmap='coolwarm', cbar=False,
+                xticklabels=heatmap_columns, yticklabels=heatmap_rows)
+    
+    # Set the position of column labels to the top
+    plt.gca().xaxis.set_ticks_position('top')
+    plt.gca().xaxis.set_label_position('top')
+    plt.yticks(rotation=0)
+
+    title_and_save_name = f'{condition}, {plate}'
+    plt.title(title_and_save_name)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_path, title_and_save_name))
+    plt.close('all')
 
 
 def plot_dist(relative_CC_scores):
