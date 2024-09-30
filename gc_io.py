@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from scipy.stats import pearsonr
 
 import gc_utils
 
@@ -476,7 +477,7 @@ def create_replicate_count_heatmap(unified_summary_data, condition_file_map, pla
 
 def __plot_heatmap(counts_matrix, heatmap_rows, heatmap_columns, condition, plate, output_path):
     plt.figure(figsize=(10, 6))
-    sns.heatmap(counts_matrix, annot=True, cmap='coolwarm', cbar=False,
+    sns.heatmap(counts_matrix, annot=True, cmap="vlag", cbar=False,
                 xticklabels=heatmap_columns, yticklabels=heatmap_rows)
     
     # Set the position of column labels to the top
@@ -489,6 +490,50 @@ def __plot_heatmap(counts_matrix, heatmap_rows, heatmap_columns, condition, plat
     plt.tight_layout()
     plt.savefig(os.path.join(output_path, title_and_save_name))
     plt.close('all')
+
+
+def create_correlation_panel(unified_summary_data, output_path):
+    medians_df = unified_summary_data.xs('median', axis=1, level=1)
+
+    medians_df['exponet_length_in_time'] = medians_df['exponet_end_time'] - medians_df['lag_end_time']
+    medians_df['exponet_length_in_OD'] = medians_df['exponet_end_OD'] - medians_df['lag_end_OD']
+
+    corr_matrix = medians_df.corr(method='pearson')
+
+
+    #mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+
+    plt.figure(figsize=(15, 15))
+    #sns.heatmap(corr_matrix, mask=mask, annot=True, cmap="vlag", vmin=-1, vmax=1, center=0)
+    sns.heatmap(corr_matrix, annot=True, cmap="vlag", vmin=-1, vmax=1, center=0)
+    heatmap_file = os.path.join(output_path, 'pearson_correlation_heatmap.png')
+    plt.title('Pearson Correlation Heatmap between all feature pairs', fontsize=24)
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+    plt.savefig(heatmap_file)
+    plt.close()
+
+    columns = medians_df.columns
+    for i in range(len(columns)):
+        for j in range(i+1, len(columns)):
+            col_x = columns[i]
+            col_y = columns[j]
+
+            plt.figure(figsize=(7, 7))
+            sns.scatterplot(data=medians_df, x=col_x, y=col_y)
+            slope, intercept = np.polyfit(medians_df[col_x], medians_df[col_y], 1)
+            plt.plot(medians_df[col_x], slope * medians_df[col_x] + intercept, color='red', linestyle='--')
+
+            pearson_corr, p_value = pearsonr(medians_df[col_x], medians_df[col_y])
+            plt.title(f'{col_x} vs {col_y} (Pearson r: {pearson_corr:.2f}), p value: {p_value:.4f}')
+
+            scatter_file = os.path.join(output_path, f'scatter_{col_x}_vs_{col_y}.png')
+            plt.tight_layout()
+            plt.savefig(scatter_file)
+            plt.close()
+
+    print(f"Heatmap saved to {heatmap_file}")
+    print(f"Scatter plots saved in {output_path}")
 
 
 def plot_dist(relative_CC_scores):
